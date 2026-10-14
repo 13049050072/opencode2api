@@ -245,7 +245,7 @@ func (p *transportPool) checkClaimedProxy(ctx context.Context, proxy *proxyTrans
 // route is unavailable. HTTP responses and unrelated transport/protocol errors
 // must not evict a proxy.
 func isProxyFailure(err error) bool {
-	if errors.Is(err, errFirstEventTimeout) {
+	if errors.Is(err, errFirstEventTimeout) || upstreamAccepted(err) {
 		return false // The upstream accepted HTTP; slow generation is not a broken proxy.
 	}
 	if err == nil {

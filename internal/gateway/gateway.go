@@ -27,6 +27,16 @@ const maxRequestBody = 32 << 20
 
 const anonymousZenKey = "public"
 
+// attemptDeadline is the per-attempt context deadline. It is armed only when
+// attempt_timeout_seconds is set: otherwise the request-level budget already
+// bounds the single attempt it would cover.
+func attemptDeadline(cfg config.Config) time.Duration {
+	if cfg.Performance.AttemptTimeoutSeconds <= 0 {
+		return 0
+	}
+	return cfg.Performance.AttemptTimeout(time.Duration(cfg.Retry.TimeoutSeconds) * time.Second)
+}
+
 // statusClientClosedRequest is nginx's 499: the client went away before the
 // gateway could answer, so the failure is neither upstream nor ours.
 const statusClientClosedRequest = 499
@@ -42,6 +52,9 @@ type Gateway struct {
 	catalog      *models.Catalog
 	monitor      *telemetry.Monitor
 	availability *models.AvailabilityStore
+	// attemptTimeout bounds a whole upstream attempt (dial + write + headers +
+	// first event), not just the header wait. Zero keeps the legacy behavior.
+	attemptTimeout time.Duration
 }
 
 func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Monitor) (*Gateway, error) {
@@ -66,15 +79,16 @@ func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Monitor) (*G
 	catalog := models.NewCatalog(cfg.Prefer, cfg.Models.Protocols)
 	catalog.SetRefreshInterval(time.Duration(cfg.Models.RefreshSeconds) * time.Second)
 	return &Gateway{
-		cfg:        cfg,
-		rotation:   rotationManager,
-		logger:     logger,
-		transports: transports,
-		zenNodes:   zenNodes,
-		goNodes:    goNodes,
-		anonymous:  newAnonymousPool(cfg.Anonymous, transports, cooldown),
-		catalog:    catalog,
-		monitor:    monitor,
+		cfg:            cfg,
+		rotation:       rotationManager,
+		logger:         logger,
+		transports:     transports,
+		zenNodes:       zenNodes,
+		goNodes:        goNodes,
+		anonymous:      newAnonymousPool(cfg.Anonymous, transports, cooldown),
+		catalog:        catalog,
+		monitor:        monitor,
+		attemptTimeout: attemptDeadline(cfg),
 	}, nil
 }
 

@@ -27,6 +27,10 @@ const maxRequestBody = 32 << 20
 
 const anonymousZenKey = "public"
 
+// statusClientClosedRequest is nginx's 499: the client went away before the
+// gateway could answer, so the failure is neither upstream nor ours.
+const statusClientClosedRequest = 499
+
 type Gateway struct {
 	rotation     *rotation.Manager
 	cfg          config.Config
@@ -189,6 +193,16 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 				finalTier = config.Tier(meta.Tier)
 			}
 			keyID, channel, anonymous := requestCredential(requestCtx)
+			// A downstream disconnect is not an upstream failure: report the
+			// real cause so telemetry and clients see a cancel, not a 502.
+			if !errors.Is(err, context.DeadlineExceeded) && wire.ClientCanceled(r.Context(), err) {
+				g.logger.Debug("client canceled before upstream response", "component", "upstream", "event", "request_canceled", "request_id", ids.Request, "tier", finalTier, "key_id", keyID, "channel", channel, "anonymous", anonymous)
+				if meta != nil {
+					meta.Outcome = "client_canceled"
+				}
+				wire.WriteError(w, external, statusClientClosedRequest, "client closed request", "client_canceled", ids.Request)
+				return
+			}
 			g.logger.Warn("all upstream attempts failed", "component", "upstream", "event", "request_failed", "request_id", ids.Request, "tier", finalTier, "key_id", keyID, "channel", channel, "anonymous", anonymous, "error", err)
 			// An exhausted request budget is a timeout, not a bad gateway: the
 			// distinction matters to clients that retry on 502.
@@ -349,6 +363,14 @@ func (g *Gateway) forwardSystemOne(w http.ResponseWriter, r *http.Request, body 
 			finalTier = config.Tier(meta.Tier)
 		}
 		keyID, channel, anonymous := requestCredential(requestCtx)
+		if !errors.Is(err, context.DeadlineExceeded) && wire.ClientCanceled(r.Context(), err) {
+			g.logger.Debug("client canceled before upstream response", "component", "upstream", "event", "request_canceled", "request_id", ids.Request, "tier", finalTier, "key_id", keyID, "channel", channel, "anonymous", anonymous)
+			if meta != nil {
+				meta.Outcome = "client_canceled"
+			}
+			wire.WriteError(w, wire.SystemOne, statusClientClosedRequest, "client closed request", "client_canceled", ids.Request)
+			return
+		}
 		g.logger.Warn("all upstream attempts failed", "component", "upstream", "event", "request_failed", "request_id", ids.Request, "tier", finalTier, "key_id", keyID, "channel", channel, "anonymous", anonymous, "error", err)
 		if errors.Is(err, context.DeadlineExceeded) {
 			wire.WriteError(w, wire.SystemOne, http.StatusGatewayTimeout, "upstream request timed out", "upstream_timeout", ids.Request)

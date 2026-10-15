@@ -20,32 +20,10 @@ window.O2I18N = (() => {
   // Snapshot of the authored copy, so switching back restores it untouched.
   const originals = new WeakMap();
 
-  // Inline vector flags. Unicode flag emoji degrades to letters on Windows and
-  // emoji assets would need an extra request, so every flag is drawn in a 60x30
-  // viewBox and scaled by CSS.
-  const FLAG_ART = {
-    "zh-CN":
-      '<rect width="60" height="30" fill="#de2910"/>' +
-      '<path fill="#ffde00" d="M14 8l1.35 2.15 2.36 0-1.53 2.29.35 2.75L14 13.71l-2.53 1.48.35-2.75-1.53-2.29 2.36 0z"/>',
-    vi:
-      '<rect width="60" height="30" fill="#da251d"/>' +
-      '<path fill="#ffff00" d="M30 5l2.25 6.91h7.26l-5.87 4.95 1.51 7.14L30 18.82l-5.15 5.18 1.51-7.14-5.87-4.95h7.26z"/>',
-    en:
-      '<rect width="60" height="30" fill="#012169"/>' +
-      '<path fill="none" stroke="#fff" stroke-width="6" d="M0 0l60 30M60 0L0 30"/>' +
-      '<path fill="none" stroke="#fff" stroke-width="10" d="M30 0v30M0 15h60"/>' +
-      '<path fill="none" stroke="#c8102e" stroke-width="2" d="M0 0l60 30M60 0L0 30"/>' +
-      '<path fill="none" stroke="#c8102e" stroke-width="6" d="M30 0v30M0 15h60"/>',
-  };
-
-  const flagIcon = (code) =>
-    `<svg class="flag-icon" viewBox="0 0 60 30" aria-hidden="true" focusable="false">${FLAG_ART[code] || ""}</svg>`;
-
   const DICTIONARY = {
     en: {
       "doc.title": "opencode2api · Operations Handbook",
       "lang.label": "Language",
-      "lang.menu": "Choose a language",
 
       "login.eyebrow": "Admin operations handbook / 2026",
       "login.headline": "Bring protocols, routing, and runtime state onto one desk.",
@@ -560,7 +538,6 @@ window.O2I18N = (() => {
     vi: {
       "doc.title": "opencode2api · Sổ tay vận hành",
       "lang.label": "Ngôn ngữ",
-      "lang.menu": "Chọn ngôn ngữ",
 
       "login.eyebrow": "Sổ tay vận hành dành cho quản trị / 2026",
       "login.headline": "Đưa giao thức, định tuyến và trạng thái vận hành lên cùng một bàn.",
@@ -1117,43 +1094,10 @@ window.O2I18N = (() => {
     });
   };
 
-  const closeMenus = (except) =>
-    document.querySelectorAll("[data-lang]").forEach((host) => {
-      if (host === except) return;
-      const menu = host.querySelector("[data-lang-menu]");
-      if (menu) menu.hidden = true;
-      const button = host.querySelector("[data-lang-toggle]");
-      if (button) button.setAttribute("aria-expanded", "false");
-    });
-
-  const syncControls = () => {
-    document.querySelectorAll("[data-lang]").forEach((host) => {
-      const button = host.querySelector("[data-lang-toggle]");
-      const menu = host.querySelector("[data-lang-menu]");
-      if (button) {
-        const label = `${t("语言", "lang.label")}: ${LABELS[locale]}`;
-        button.innerHTML = flagIcon(locale);
-        button.title = label;
-        button.setAttribute("aria-label", label);
-      }
-      if (menu) {
-        menu.replaceChildren(
-          ...SUPPORTED.map((code) => {
-            const option = document.createElement("button");
-            option.type = "button";
-            option.className = "lang-option";
-            option.dataset.locale = code;
-            option.setAttribute("aria-current", String(code === locale));
-            option.append(...[flagIcon(code), document.createTextNode(LABELS[code])]);
-            option.onclick = () => {
-              menu.hidden = true;
-              button?.setAttribute("aria-expanded", "false");
-              setLocale(code);
-            };
-            return option;
-          }),
-        );
-      }
+  const syncSelectors = () => {
+    document.querySelectorAll("[data-lang-switch]").forEach((node) => {
+      node.value = locale;
+      node.setAttribute("aria-label", t("语言", "lang.label"));
     });
   };
 
@@ -1172,7 +1116,7 @@ window.O2I18N = (() => {
       document.documentElement.lang = locale;
       apply();
     }
-    syncControls();
+    syncSelectors();
     if (changed) notify();
   };
 
@@ -1186,25 +1130,20 @@ window.O2I18N = (() => {
 
   const init = () => {
     document.documentElement.lang = locale;
-    document.querySelectorAll("[data-lang]").forEach((host) => {
-      const button = host.querySelector("[data-lang-toggle]");
-      const menu = host.querySelector("[data-lang-menu]");
-      if (!button || !menu) return;
-      button.onclick = (event) => {
-        event.stopPropagation();
-        const open = menu.hidden;
-        closeMenus(host);
-        menu.hidden = !open;
-        button.setAttribute("aria-expanded", String(open));
-      };
-    });
-    document.addEventListener("click", () => closeMenus(null));
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeMenus(null);
+    document.querySelectorAll("[data-lang-switch]").forEach((node) => {
+      node.replaceChildren(
+        ...SUPPORTED.map((code) => {
+          const option = document.createElement("option");
+          option.value = code;
+          option.textContent = LABELS[code];
+          return option;
+        }),
+      );
+      node.onchange = (event) => setLocale(event.target.value);
     });
     if (SUPPORTED.includes(stored())) setLocale(stored(), false);
     else apply();
-    syncControls();
+    syncSelectors();
   };
 
   return {

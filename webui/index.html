@@ -21,24 +21,7 @@
       </div>
       <div class="login-panel">
         <form id="login-form" class="login-card">
-          <div class="lang-row">
-            <div class="lang" data-lang>
-              <button
-                class="lang-flag"
-                type="button"
-                data-lang-toggle
-                aria-haspopup="true"
-                aria-expanded="false"
-              ></button>
-              <div
-                class="lang-menu"
-                data-lang-menu
-                aria-label="选择语言"
-                data-i18n-attr="aria-label:lang.menu"
-                hidden
-              ></div>
-            </div>
-          </div>
+          <div class="lang-row"><select class="lang-switch" data-lang-switch></select></div>
           <div class="eyebrow" data-i18n="login.restricted">Restricted console</div>
           <h2 data-i18n="login.title">管理登录</h2>
           <div class="rule"></div>
@@ -120,22 +103,7 @@
             </div>
           </div>
           <div class="toolbar">
-            <div class="lang" data-lang>
-              <button
-                class="lang-flag"
-                type="button"
-                data-lang-toggle
-                aria-haspopup="true"
-                aria-expanded="false"
-              ></button>
-              <div
-                class="lang-menu"
-                data-lang-menu
-                aria-label="选择语言"
-                data-i18n-attr="aria-label:lang.menu"
-                hidden
-              ></div>
-            </div>
+            <select class="lang-switch" data-lang-switch></select>
             <button id="refresh-now" class="ghost" data-i18n="topbar.refresh">立即刷新</button
             ><button id="logout" class="ghost" data-i18n="topbar.logout">退出</button>
           </div>

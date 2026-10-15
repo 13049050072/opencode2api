@@ -13,6 +13,7 @@
 window.O2I18N = (() => {
   const STORAGE_KEY = "opencode2api.ui.lang";
   const DEFAULT_LOCALE = "zh-CN";
+  const FLAGS = { "zh-CN": "🇨🇳", en: "🇺🇸", vi: "🇻🇳" };
   const SUPPORTED = ["zh-CN", "en", "vi"];
   const LABELS = { "zh-CN": "简体中文", en: "English", vi: "Tiếng Việt" };
   const DATE_LOCALES = { "zh-CN": "zh-CN", en: "en-US", vi: "vi-VN" };
@@ -1097,7 +1098,7 @@ window.O2I18N = (() => {
   const syncSelectors = () => {
     document.querySelectorAll("[data-lang-switch]").forEach((node) => {
       node.value = locale;
-      node.setAttribute("aria-label", t("语言", "lang.label"));
+      node.setAttribute("aria-label", LABELS[locale] || t("语言", "lang.label"));
     });
   };
 
@@ -1135,7 +1136,8 @@ window.O2I18N = (() => {
         ...SUPPORTED.map((code) => {
           const option = document.createElement("option");
           option.value = code;
-          option.textContent = LABELS[code];
+          option.textContent = FLAGS[code];
+          option.setAttribute('aria-label', LABELS[code]);
           return option;
         }),
       );

@@ -68,6 +68,9 @@ type RetryConfig struct {
 type ModelsConfig struct {
 	RefreshSeconds int               `json:"refresh_seconds"`
 	Protocols      map[string]string `json:"protocols"`
+	// FreeOnly limits discovery and routing to free models, even when Zen or
+	// Go keys could serve paid ones. Free models may still fall back to keys.
+	FreeOnly bool `json:"free_only"`
 }
 
 type LoggingConfig struct {

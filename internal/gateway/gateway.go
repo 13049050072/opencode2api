@@ -78,6 +78,7 @@ func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Monitor) (*G
 	}
 	catalog := models.NewCatalog(cfg.Prefer, cfg.Models.Protocols)
 	catalog.SetRefreshInterval(time.Duration(cfg.Models.RefreshSeconds) * time.Second)
+	catalog.SetFreeOnly(cfg.Models.FreeOnly)
 	return &Gateway{
 		cfg:            cfg,
 		rotation:       rotationManager,

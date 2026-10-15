@@ -149,6 +149,7 @@ function fillConfig(value) {
   $("#c-timeout").value = value.retry.timeout_seconds;
   $("#c-refresh").value = value.models.refresh_seconds;
   $("#c-protocols").value = JSON.stringify(value.models.protocols || {}, null, 2);
+  $("#c-free-only").checked = !!value.models.free_only;
   const reasoning = value.reasoning || {};
   $("#c-reasoning-effort").value = reasoning.effort || "";
   $("#c-reasoning-by-model").value = JSON.stringify(reasoning.effort_by_model || {}, null, 2);
@@ -215,6 +216,7 @@ $("#config-form").addEventListener("submit", async (event) => {
       models: {
         refresh_seconds: number("#c-refresh"),
         protocols: JSON.parse($("#c-protocols").value || "{}"),
+        free_only: $("#c-free-only").checked,
       },
       reasoning: {
         effort: $("#c-reasoning-effort").value,

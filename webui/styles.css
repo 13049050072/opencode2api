@@ -315,6 +315,9 @@ pre,
   max-width: 680px;
 }
 .lang-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: auto;
   min-width: 34px;
   height: 38px;

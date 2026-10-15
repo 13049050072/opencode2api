@@ -319,10 +319,15 @@ pre,
   min-width: 34px;
   height: 38px;
   padding: 0 4px;
-  border: 1px solid var(--ink);
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   font-size: 18px;
   line-height: 1;
   text-align: center;
+  cursor: pointer;
   background: transparent;
   color: var(--ink);
   font-weight: 700;

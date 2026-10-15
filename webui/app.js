@@ -1110,6 +1110,9 @@ function renderAPIKeys(keys) {
     appendCell(row, key.name);
     appendCell(row, key.display, "mono");
     appendCell(row, key.enabled ? "已启用" : "已停用", key.enabled ? "status ok" : "status warn");
+    const usage = key.usage || {},
+      summary = (value = {}) => `${formatTokens(value.requests)} 次 · ${formatTokens(value.total_tokens)} tokens`;
+    appendCell(row, `${summary(usage.last_hour)} / ${summary(usage.lifetime)}`);
     appendCell(row, key.created_at ? localTime(key.created_at) : "已有配置");
     const cell = document.createElement("td"),
       actions = document.createElement("div");
@@ -1144,7 +1147,7 @@ function renderAPIKeys(keys) {
     row.appendChild(cell);
     host.appendChild(row);
   }
-  if (!keys.length) emptyRow(host, 5, "暂无 API Key");
+  if (!keys.length) emptyRow(host, 6, "暂无 API Key");
 }
 $("#api-key-form").onsubmit = async (event) => {
   event.preventDefault();

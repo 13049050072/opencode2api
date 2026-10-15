@@ -398,7 +398,7 @@ Request outcomes describe the completed inference. A failed SSE response or trun
 
 Upstream **attempt** records measure the HTTP exchange through receipt of response headers. Their success and latency are separate from completion of the full JSON body or stream.
 
-Token statistics use reported usage only. Input tokens include cache reads and writes; cached tokens separately count cache reads. Missing usage is not estimated, and coverage shows how many routed inference requests reported usage.
+Token statistics use reported usage only. Input tokens include cache reads and writes; cached tokens separately count cache reads. Missing usage is not estimated, and coverage shows how many routed inference requests reported usage. `usage.server_keys` splits requests and tokens by the local server key the caller authenticated with (its fingerprint, as shown in `/api/api-keys`); Playground traffic is counted under `playground`.
 
 | Data                                                      | Storage / retention                                                                          |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------- |

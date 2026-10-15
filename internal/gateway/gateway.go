@@ -110,24 +110,32 @@ func (g *Gateway) authenticate(next http.HandlerFunc) http.HandlerFunc {
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 			candidates = append(candidates, strings.TrimSpace(auth[7:]))
 		}
-		valid := false
+		matched := ""
 		for _, key := range g.cfg.ServerKeys {
 			if !g.cfg.ServerKeyEnabled(key) {
 				continue
 			}
 			for _, candidate := range candidates {
 				if len(candidate) == len(key) && subtle.ConstantTimeCompare([]byte(candidate), []byte(key)) == 1 {
-					valid = true
+					matched = key
 				}
 			}
 		}
-		if !valid {
+		if matched == "" {
 			protocol := wire.Chat
 			if r.URL.Path == "/v1/messages" {
 				protocol = wire.Anthropic
 			}
 			wire.WriteError(w, protocol, http.StatusUnauthorized, "invalid local API key", "authentication_error", "")
 			return
+		}
+		if meta := telemetry.MetaFromRequest(r); meta != nil {
+			// The Playground borrows the first enabled key to pass this check, so
+			// its traffic gets its own bucket instead of being billed to that key.
+			meta.ServerKeyID = config.Fingerprint(matched)
+			if isDiagnosticRequest(r.Context()) {
+				meta.ServerKeyID = telemetry.PlaygroundServerKey
+			}
 		}
 		next(w, r)
 	}

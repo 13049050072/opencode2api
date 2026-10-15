@@ -1,5 +1,9 @@
 const $ = (selector) => document.querySelector(selector),
   $$ = (selector) => [...document.querySelectorAll(selector)];
+// Text is authored in Simplified Chinese and stays the fallback for every locale
+// without a dictionary entry; window.O2I18N only replaces what it can translate.
+const t = (original, key, ...args) => window.O2I18N.t(original, key, ...args);
+window.O2I18N.init();
 let csrf = "",
   config = null,
   monitorData = null,
@@ -26,6 +30,17 @@ const pages = {
   "model-quotas": ["10", "模型与额度", "可用模型、共享套餐剩余额度与重置时间。"],
   "api-keys": ["11", "API Key 管理", "给每个调用方独立的访问密钥。"],
 };
+const pageMeta = (page) => [
+  pages[page][0],
+  t(pages[page][1], `page.${page}.title`),
+  t(pages[page][2], `page.${page}.sub`),
+];
+function renderPageHeader(page) {
+  const meta = pageMeta(page);
+  $("#page-index").textContent = t("Section {0}", "page.section", meta[0]);
+  $("#page-title").textContent = meta[1];
+  $("#page-sub").textContent = meta[2];
+}
 async function api(path, options = {}) {
   options.headers = { ...(options.headers || {}), Accept: "application/json" };
   if (options.body) options.headers["Content-Type"] = "application/json";
@@ -34,7 +49,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, options);
   if (response.status === 401) {
     showLogin();
-    throw new Error("登录已失效");
+    throw new Error(t("登录已失效", "error.session"));
   }
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
@@ -108,10 +123,7 @@ function openPage(page) {
     button.classList.toggle("active", button.dataset.page === page),
   );
   $$(".page").forEach((node) => node.classList.toggle("hidden", node.id !== `page-${page}`));
-  const meta = pages[page];
-  $("#page-index").textContent = `Section ${meta[0]}`;
-  $("#page-title").textContent = meta[1];
-  $("#page-sub").textContent = meta[2];
+  renderPageHeader(page);
   if (page === "access") renderAccessExamples();
   if (page === "usage") renderUsage();
   if (page === "model-quotas") {
@@ -165,9 +177,18 @@ function fillConfig(value) {
   $("#c-ring").value = value.logging.ring_size;
   $("#c-dump-bodies").checked = !!value.logging.dump_request_bodies;
   ["server_keys", "zen_keys", "go_keys", "proxies"].forEach(renderChips);
+  renderRestartNotice(value);
+}
+function renderRestartNotice(value) {
   const notice = $("#restart-notice");
   if (value.restart_required_fields?.length) {
-    notice.textContent = `已保存但尚未生效：${value.restart_required_fields.join(", ")}。当前 API ${value.effective.listen}、WebUI ${value.effective.webui_listen}。请重启进程。`;
+    notice.textContent = t(
+      `已保存但尚未生效：${value.restart_required_fields.join(", ")}。当前 API ${value.effective.listen}、WebUI ${value.effective.webui_listen}。请重启进程。`,
+      "config.restartNotice",
+      value.restart_required_fields.join(", "),
+      value.effective.listen,
+      value.effective.webui_listen,
+    );
     notice.classList.remove("hidden");
   } else notice.classList.add("hidden");
 }
@@ -182,7 +203,7 @@ function renderChips(name) {
     chip.dataset.id = item.id;
     text.textContent = item.display;
     remove.type = "button";
-    remove.title = "移除";
+    remove.title = t("移除", "common.remove");
     remove.textContent = "×";
     remove.onclick = () => chip.remove();
     chip.append(text, remove);
@@ -253,8 +274,12 @@ $("#config-form").addEventListener("submit", async (event) => {
     await loadDebugModels();
     toast(
       result.result.restart_required
-        ? `已应用；${result.result.restart_fields.join(", ")} 需重启`
-        : "配置已保存并立即应用",
+        ? t(
+            `已应用；${result.result.restart_fields.join(", ")} 需重启`,
+            "toast.config.restart",
+            result.result.restart_fields.join(", "),
+          )
+        : t("配置已保存并立即应用", "toast.config.saved"),
     );
   } catch (error) {
     toast(error.message, true);
@@ -265,13 +290,17 @@ $("#reload-config").onclick = async () => {
     const result = await api("/api/config/reload", { method: "POST", body: "{}" });
     await loadConfig();
     await loadDebugModels();
-    toast(result.restart_required ? "磁盘配置已重载，监听字段需重启" : "磁盘配置已重载");
+    toast(
+      result.restart_required
+        ? t("磁盘配置已重载，监听字段需重启", "toast.config.reloadedRestart")
+        : t("磁盘配置已重载", "toast.config.reloaded"),
+    );
   } catch (error) {
     toast(error.message, true);
   }
 };
 $("#reveal").onclick = async () => {
-  const password = prompt("请再次输入管理密码");
+  const password = prompt(t("请再次输入管理密码", "config.revealPrompt"));
   if (password === null) return;
   try {
     const values = await api("/api/config/reveal", {
@@ -299,7 +328,7 @@ $("#account-form").addEventListener("submit", async (event) => {
         new_password: $("#a-new").value,
       }),
     });
-    toast("账号已更新，请重新登录");
+    toast(t("账号已更新，请重新登录", "toast.account.updated"));
     setTimeout(showLogin, 800);
   } catch (error) {
     toast(error.message, true);
@@ -311,7 +340,7 @@ function appendCell(row, value, className = "") {
   if (className) cell.className = className;
   row.appendChild(cell);
 }
-function emptyRow(host, columns, message = "暂无数据") {
+function emptyRow(host, columns, message = t("暂无数据", "common.empty")) {
   const row = document.createElement("tr"),
     cell = document.createElement("td");
   cell.colSpan = columns;
@@ -326,10 +355,14 @@ function renderResources(resources) {
   (resources.proxies || []).forEach((proxy) => {
     const row = document.createElement("tr");
     appendCell(row, proxy.address);
-    appendCell(row, proxy.healthy ? "正常" : "不可用", `status ${proxy.healthy ? "ok" : "bad"}`);
     appendCell(
       row,
-      `Z ${proxy.zen_keys} · G ${proxy.go_keys} · A ${proxy.anonymous ? "开" : "关"}`,
+      proxy.healthy ? t("正常", "state.healthy") : t("不可用", "state.unavailable"),
+      `status ${proxy.healthy ? "ok" : "bad"}`,
+    );
+    appendCell(
+      row,
+      `Z ${proxy.zen_keys} · G ${proxy.go_keys} · A ${proxy.anonymous ? t("开", "common.on") : t("关", "common.off")}`,
     );
     proxies.appendChild(row);
   });
@@ -340,7 +373,7 @@ function renderResources(resources) {
     const row = document.createElement("tr");
     appendCell(row, "anonymous");
     appendCell(row, "zen");
-    appendCell(row, "已启用", "status ok");
+    appendCell(row, t("已启用", "state.enabled"), "status ok");
     keys.appendChild(row);
   }
   (resources.keys || []).forEach((key) => {
@@ -349,7 +382,7 @@ function renderResources(resources) {
     appendCell(row, key.tier);
     appendCell(
       row,
-      key.cooldown_until ? "冷却中" : "可用",
+      key.cooldown_until ? t("冷却中", "state.cooling") : t("可用", "state.available"),
       `status ${key.cooldown_until ? "warn" : "ok"}`,
     );
     keys.appendChild(row);
@@ -360,9 +393,9 @@ function renderBreakdowns(metrics) {
   const host = $("#breakdowns");
   host.replaceChildren();
   [
-    ["端点", metrics.endpoints],
-    ["状态码", metrics.statuses],
-    ["模型", metrics.models],
+    [t("端点", "breakdown.endpoint"), metrics.endpoints],
+    [t("状态码", "breakdown.status"), metrics.statuses],
+    [t("模型", "breakdown.model"), metrics.models],
     ["Tier", metrics.tiers],
   ].forEach(([title, data]) => {
     const block = document.createElement("div"),
@@ -380,7 +413,7 @@ function renderBreakdowns(metrics) {
         appendCell(row, value);
         body.appendChild(row);
       });
-    if (!body.children.length) emptyRow(body, 2, "暂无请求");
+    if (!body.children.length) emptyRow(body, 2, t("暂无请求", "breakdown.empty"));
     table.appendChild(body);
     block.append(heading, table);
     host.appendChild(block);
@@ -391,23 +424,31 @@ function renderGuide() {
   const resources = monitorData.resources,
     models = resources.models || {},
     modelDescription = models.stale
-      ? "目录来自" + (models.cache_source || "磁盘") + "快取，等待背景刷新。"
-      : "上游目录已完成首次刷新且有可暴露模型。";
+      ? t("目录来自{0}快取，等待背景刷新。", "guide.models.cached", models.cache_source || "磁盘")
+      : t("上游目录已完成首次刷新且有可暴露模型。", "guide.models.ready");
   const checks = [
-    ["登录管理端", "当前 Session 已通过服务端验证。", true],
-    ["配置本地 Key", "客户端使用 Server Key 访问 Gateway。", (config.server_keys || []).length > 0],
+    [t("登录管理端", "guide.step.login"), t("当前 Session 已通过服务端验证。", "guide.step.login.desc"), true],
     [
-      "选择上游通道",
-      "至少有 Zen / Go Key，或启用匿名通道。",
+      t("配置本地 Key", "guide.step.serverkey"),
+      t("客户端使用 Server Key 访问 Gateway。", "guide.step.serverkey.desc"),
+      (config.server_keys || []).length > 0,
+    ],
+    [
+      t("选择上游通道", "guide.step.upstream"),
+      t("至少有 Zen / Go Key，或启用匿名通道。", "guide.step.upstream.desc"),
       (config.zen_keys || []).length + (config.go_keys || []).length > 0 || config.anonymous,
     ],
     [
-      "检查 Proxy",
-      "至少一个代理节点健康。",
+      t("检查 Proxy", "guide.step.proxy"),
+      t("至少一个代理节点健康。", "guide.step.proxy.desc"),
       (resources.proxies || []).some((proxy) => proxy.healthy),
     ],
-    ["等待模型目录", modelDescription, models.exposed > 0 && !!models.updated_at],
-    ["复制接入示例", "进入接入手册，替换模型与 YOUR_API_KEY。", true],
+    [t("等待模型目录", "guide.step.models"), modelDescription, models.exposed > 0 && !!models.updated_at],
+    [
+      t("复制接入示例", "guide.step.access"),
+      t("进入接入手册，替换模型与 YOUR_API_KEY。", "guide.step.access.desc"),
+      true,
+    ],
   ];
   const host = $("#guide-steps");
   host.replaceChildren();
@@ -420,7 +461,7 @@ function renderGuide() {
     heading.textContent = title;
     copy.textContent = description;
     state.className = `step-state ${done ? "ok" : "warn"}`;
-    state.textContent = done ? "✓ 已就绪" : "○ 待处理";
+    state.textContent = done ? t("✓ 已就绪", "guide.done") : t("○ 待处理", "guide.todo");
     node.append(heading, copy, state);
     host.appendChild(node);
   });
@@ -458,7 +499,7 @@ function renderUsage() {
       appendCell(row, formatTokens(value.total_tokens));
       models.appendChild(row);
     });
-  if (!models.children.length) emptyRow(models, 4, "尚无 Token 用量");
+  if (!models.children.length) emptyRow(models, 4, t("尚无 Token 用量", "usage.empty.models"));
   const tiers = $("#usage-tiers"),
     tierEntries = Object.entries(usage.tiers || {}).sort(
       (a, b) => (b[1].total_tokens || 0) - (a[1].total_tokens || 0),
@@ -485,7 +526,7 @@ function renderUsage() {
   if (!tierEntries.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "尚无 Tier 用量";
+    empty.textContent = t("尚无 Tier 用量", "usage.empty.tiers");
     tiers.appendChild(empty);
   }
 }
@@ -511,7 +552,7 @@ function renderPlayKeys() {
   select.replaceChildren();
   const auto = document.createElement("option");
   auto.value = "auto";
-  auto.textContent = "自动路由（匿名 / Tier 回退 / Key 轮询）";
+  auto.textContent = t("自动路由（匿名 / Tier 回退 / Key 轮询）", "playground.key.auto");
   select.appendChild(auto);
   const keys = debugData?.keys || {};
   [
@@ -526,7 +567,11 @@ function renderPlayKeys() {
       const option = document.createElement("option");
       option.value = `${tier}:${item.id}`;
       const cooling = item.cooldown_until
-        ? ` · 冷却至 ${new Date(item.cooldown_until).toLocaleTimeString()}`
+        ? t(
+            ` · 冷却至 ${new Date(item.cooldown_until).toLocaleTimeString()}`,
+            "playground.key.cooling",
+            new Date(item.cooldown_until).toLocaleTimeString(),
+          )
         : "";
       option.textContent = `${tier.toUpperCase()} · ${item.display} · ${item.id}${cooling}`;
       group.appendChild(option);
@@ -561,15 +606,16 @@ async function loadDebugModels() {
 }
 function playgroundTemplate() {
   const protocol = $("#play-protocol").value,
-    model = $("#play-model").value || "YOUR_MODEL";
-  if (protocol === "responses") return { model, input: "用一句话说明这个模型的能力。" };
+    model = $("#play-model").value || "YOUR_MODEL",
+    prompt = t("用一句话说明这个模型的能力。", "playground.samplePrompt");
+  if (protocol === "responses") return { model, input: prompt };
   if (protocol === "anthropic")
     return {
       model,
       max_tokens: 512,
-      messages: [{ role: "user", content: "用一句话说明这个模型的能力。" }],
+      messages: [{ role: "user", content: prompt }],
     };
-  return { model, messages: [{ role: "user", content: "用一句话说明这个模型的能力。" }] };
+  return { model, messages: [{ role: "user", content: prompt }] };
 }
 function resetPlayTemplate() {
   $("#play-request").value = JSON.stringify(playgroundTemplate(), null, 2);
@@ -589,41 +635,50 @@ function displayPlayground(result) {
   lastPlayground = result;
   const keyTest = result.key_test
     ? {
-        usable: "Key 可用",
-        rejected: "Key 被拒绝",
-        rate_limited: "Key 已被接受但受到限流",
-        upstream_error: "上游异常，无法判定 Key",
-        transport_error: "网络或代理异常，无法判定 Key",
-        unavailable: "Key 或运行时不可用",
-        request_error: "请求未成功",
+        usable: t("Key 可用", "play.key.usable"),
+        rejected: t("Key 被拒绝", "play.key.rejected"),
+        rate_limited: t("Key 已被接受但受到限流", "play.key.rateLimited"),
+        upstream_error: t("上游异常，无法判定 Key", "play.key.upstreamError"),
+        transport_error: t("网络或代理异常，无法判定 Key", "play.key.transportError"),
+        unavailable: t("Key 或运行时不可用", "play.key.unavailable"),
+        request_error: t("请求未成功", "play.key.requestError"),
       }[result.key_test] || result.key_test
     : "";
   $("#play-state").textContent = result.ok
-    ? `请求成功 · HTTP ${result.http_status}`
-    : `请求失败 · HTTP ${result.http_status}`;
+    ? t(`请求成功 · HTTP {0}`, "play.state.ok", result.http_status)
+    : t(`请求失败 · HTTP {0}`, "play.state.failed", result.http_status);
   $("#play-state").className = `section-caption ${result.ok ? "ok" : "bad"}`;
   const route = result.route || {},
     eligibility = route.anonymous_eligibility || {},
     selected = result.selected_key,
     routeLabel = route.tier
       ? `${route.tier} / ${route.anonymous ? "anonymous" : route.key_id || "key"}`
-      : "未路由";
+      : t("未路由", "play.route.none");
   renderFacts("#play-facts", [
-    ["HTTP 状态", result.http_status, result.ok ? "ok" : "bad"],
-    ["耗时", `${result.duration_ms} ms`],
+    [t("HTTP 状态", "play.httpStatus"), result.http_status, result.ok ? "ok" : "bad"],
+    [t("耗时", "common.duration"), `${result.duration_ms} ms`],
     ["Request ID", result.request_id || "—"],
-    ["测试模式", selected ? `指定 ${selected.tier.toUpperCase()} Key` : "自动路由"],
-    ["测试 Key", selected ? `${selected.display} · ${selected.id}` : "—"],
     [
-      "Key 判断",
-      keyTest || "自动路由未单独判定",
+      t("测试模式", "play.mode"),
+      selected
+        ? t(`指定 ${selected.tier.toUpperCase()} Key`, "play.mode.selected", selected.tier.toUpperCase())
+        : t("自动路由", "play.mode.auto"),
+    ],
+    [t("测试 Key", "play.testedKey"), selected ? `${selected.display} · ${selected.id}` : "—"],
+    [
+      t("Key 判断", "play.keyVerdict"),
+      keyTest || t("自动路由未单独判定", "play.keyVerdict.none"),
       result.key_test === "usable" ? "ok" : result.key_test ? "bad" : "",
     ],
-    ["实际路由", routeLabel],
-    ["原生协议", route.native_protocol || "—"],
+    [t("实际路由", "play.actualRoute"), routeLabel],
+    [t("原生协议", "play.nativeProtocol"), route.native_protocol || "—"],
     [
-      "匿名判断",
-      `${eligibility.allowed ? "允许" : "拒绝"} · ${eligibility.source || "—"}`,
+      t("匿名判断", "play.anonymousVerdict"),
+      t(
+        `${eligibility.allowed ? "允许" : "拒绝"} · ${eligibility.source || "—"}`,
+        eligibility.allowed ? "play.eligibility.allowed" : "play.eligibility.denied",
+        eligibility.source || "—",
+      ),
       eligibility.allowed ? "ok" : "warn",
     ],
   ]);
@@ -636,7 +691,7 @@ $("#play-form").addEventListener("submit", async (event) => {
   try {
     request = JSON.parse($("#play-request").value);
   } catch (error) {
-    toast(`请求 JSON 无效：${error.message}`, true);
+    toast(t(`请求 JSON 无效：${error.message}`, "toast.play.invalidJson", error.message), true);
     return;
   }
   const keyValue = $("#play-key").value,
@@ -650,7 +705,9 @@ $("#play-form").addEventListener("submit", async (event) => {
           };
   $("#play-run").disabled = true;
   $("#play-state").textContent =
-    key.mode === "selected" ? "指定 Key 测试进行中…" : "Gateway 请求进行中…";
+    key.mode === "selected"
+      ? t("指定 Key 测试进行中…", "play.state.testingKey")
+      : t("Gateway 请求进行中…", "play.state.running");
   try {
     const result = await api("/api/debug/inference", {
       method: "POST",
@@ -659,7 +716,7 @@ $("#play-form").addEventListener("submit", async (event) => {
     displayPlayground(result);
   } catch (error) {
     toast(error.message, true);
-    $("#play-state").textContent = "诊断入口请求失败";
+    $("#play-state").textContent = t("诊断入口请求失败", "play.state.failedToCall");
   } finally {
     $("#play-run").disabled = false;
   }
@@ -667,9 +724,9 @@ $("#play-form").addEventListener("submit", async (event) => {
 $("#play-copy").onclick = async () => {
   try {
     await navigator.clipboard.writeText($("#play-output").textContent);
-    toast("原始响应已复制");
+    toast(t("原始响应已复制", "toast.play.copied"));
   } catch (_) {
-    toast("浏览器不允许剪贴板访问", true);
+    toast(t("浏览器不允许剪贴板访问", "common.clipboard"), true);
   }
 };
 function renderDiagnostics() {
@@ -677,30 +734,52 @@ function renderDiagnostics() {
   const metadata = debugData?.metadata || monitorData?.resources?.metadata || {},
     last = lastPlayground || debugData?.last_inference;
   renderFacts("#metadata-facts", [
-    ["就绪", metadata.ready ? "是" : "否", metadata.ready ? "ok" : "warn"],
-    ["模型数", formatTokens(metadata.models)],
-    ["更新时间", metadata.updated_at ? new Date(metadata.updated_at).toLocaleString() : "尚未更新"],
-    ["是否过期", metadata.stale ? "是" : "否", metadata.stale ? "warn" : "ok"],
-    ["下次刷新", metadata.next_refresh ? new Date(metadata.next_refresh).toLocaleString() : "—"],
-    ["最近错误", metadata.last_error || "无", metadata.last_error ? "bad" : "ok"],
+    [t("就绪", "diag.ready"), metadata.ready ? t("是", "common.yes") : t("否", "common.no"), metadata.ready ? "ok" : "warn"],
+    [t("模型数", "diag.modelCount"), formatTokens(metadata.models)],
+    [
+      t("更新时间", "diag.updatedAt"),
+      metadata.updated_at
+        ? new Date(metadata.updated_at).toLocaleString()
+        : t("尚未更新", "diag.notUpdated"),
+    ],
+    [
+      t("是否过期", "diag.stale"),
+      metadata.stale ? t("是", "common.yes") : t("否", "common.no"),
+      metadata.stale ? "warn" : "ok",
+    ],
+    [
+      t("下次刷新", "diag.nextRefresh"),
+      metadata.next_refresh
+        ? new Date(metadata.next_refresh).toLocaleString()
+        : "—",
+    ],
+    [
+      t("最近错误", "diag.lastError"),
+      metadata.last_error || t("无", "common.none"),
+      metadata.last_error ? "bad" : "ok",
+    ],
   ]);
   renderFacts(
     "#last-playground",
     last
       ? [
-          ["结果", last.ok ? "成功" : "失败", last.ok ? "ok" : "bad"],
-          ["HTTP", last.http_status],
-          ["耗时", `${last.duration_ms} ms`],
-          ["Request ID", last.request_id || "—"],
-          ["模型", last.route?.model || "—"],
           [
-            "路由",
+            t("结果", "diag.result"),
+            last.ok ? t("成功", "diag.ok") : t("失败", "diag.failed"),
+            last.ok ? "ok" : "bad",
+          ],
+          ["HTTP", last.http_status],
+          [t("耗时", "common.duration"), `${last.duration_ms} ms`],
+          ["Request ID", last.request_id || "—"],
+          [t("模型", "common.model"), last.route?.model || "—"],
+          [
+            t("路由", "diag.route"),
             last.route?.tier
               ? `${last.route.tier} / ${last.route.anonymous ? "anonymous" : last.route.key_id || "key"}`
-              : "未路由",
+              : t("未路由", "play.route.none"),
           ],
         ]
-      : [["状态", "尚无 Playground 追踪"]],
+      : [[t("状态", "diag.state"), t("尚无 Playground 追踪", "diag.noTrace")]],
   );
   renderDiagnosticModels();
   const requests = $("#upstream-requests");
@@ -718,8 +797,8 @@ function renderDiagnostics() {
       appendCell(row, request.key_id || "—");
       appendCell(row, request.attempts);
       const terminalResults = {
-        stream_error: "流式响应失败",
-        client_canceled: "客户端已取消",
+        stream_error: t("流式响应失败", "diag.streamError"),
+        client_canceled: t("客户端已取消", "diag.clientCanceled"),
       };
       const result = terminalResults[request.outcome]
         ? `HTTP ${request.status} · ${terminalResults[request.outcome]}`
@@ -728,7 +807,7 @@ function renderDiagnostics() {
       appendCell(row, `${request.duration_ms} ms`);
       requests.appendChild(row);
     });
-  if (!requests.children.length) emptyRow(requests, 9, "尚无请求路由");
+  if (!requests.children.length) emptyRow(requests, 9, t("尚无请求路由", "diag.noRequests"));
   const attempts = $("#upstream-attempts");
   attempts.replaceChildren();
   (monitorData?.upstream?.recent || [])
@@ -746,7 +825,7 @@ function renderDiagnostics() {
       appendCell(row, `${attempt.duration_ms} ms`);
       attempts.appendChild(row);
     });
-  if (!attempts.children.length) emptyRow(attempts, 8, "尚无上游尝试");
+  if (!attempts.children.length) emptyRow(attempts, 8, t("尚无上游尝试", "diag.noAttempts"));
 }
 function renderDiagnosticModels() {
   const host = $("#diagnostic-models");
@@ -763,17 +842,21 @@ function renderDiagnosticModels() {
         plan = [...(item.anonymous ? ["anonymous"] : []), ...(item.key_tiers || [])];
       appendCell(row, item.model);
       appendCell(row, `${item.native_protocol} · ${item.protocol_source}`);
-      appendCell(
+appendCell(
         row,
         item.route_error || (plan.length ? plan.join(" → ") : "—"),
         item.route_error ? "bad" : "",
       );
-      appendCell(row, eligibility.allowed ? "允许" : "拒绝", eligibility.allowed ? "ok" : "warn");
+      appendCell(
+        row,
+        eligibility.allowed ? t("允许", "common.allowed") : t("拒绝", "common.denied"),
+        eligibility.allowed ? "ok" : "warn",
+      );
       appendCell(row, eligibility.source || "—");
       appendCell(row, `${input == null ? "?" : input} / ${output == null ? "?" : output}`, "cost");
       host.appendChild(row);
     });
-  if (!host.children.length) emptyRow(host, 6, "没有匹配模型");
+  if (!host.children.length) emptyRow(host, 6, t("没有匹配模型", "diag.noMatch"));
 }
 $("#diagnostic-model-search").addEventListener("input", renderDiagnosticModels);
 async function refreshMonitor() {
@@ -796,7 +879,7 @@ $("#refresh-now").onclick = async () => {
   await Promise.all([refreshMonitor(), loadConfig(), loadDebugModels()]);
   if (location.hash === "#model-quotas") await loadModelQuotas();
   if (location.hash === "#api-keys") await loadAPIKeys();
-  toast("状态已刷新");
+  toast(t("状态已刷新", "toast.refreshed"));
 };
 function derivedAPIBase() {
   if (!config) return `${location.protocol}//${location.hostname}:8080`;
@@ -818,13 +901,13 @@ function codeCard(label, text) {
   title.textContent = label;
   copy.type = "button";
   copy.className = "copy";
-  copy.textContent = "复制";
+  copy.textContent = t("复制", "common.copy");
   copy.onclick = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      toast("示例已复制");
+      toast(t("示例已复制", "toast.example.copied"));
     } catch (_) {
-      toast("浏览器不允许剪贴板访问", true);
+      toast(t("浏览器不允许剪贴板访问", "common.clipboard"), true);
     }
   };
   head.append(title, copy);
@@ -878,7 +961,7 @@ function connectLogs() {
       });
     }
   });
-  eventSource.addEventListener("gap", () => toast("较早日志已从内存清除", true));
+  eventSource.addEventListener("gap", () => toast(t("较早日志已从内存清除", "logs.gap"), true));
 }
 function renderLogs() {
   const level = $("#log-level").value,
@@ -924,7 +1007,7 @@ function renderLogs() {
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "等待日志事件…";
+    empty.textContent = t("等待日志事件…", "logs.waiting");
     host.appendChild(empty);
   }
   host.scrollTop = host.scrollHeight;
@@ -934,16 +1017,19 @@ function renderLogs() {
 );
 $("#log-pause").onclick = () => {
   paused = !paused;
-  $("#log-pause").textContent = paused ? "继续" : "暂停";
+  $("#log-pause").textContent = paused ? t("继续", "logs.resume") : t("暂停", "logs.pause");
   if (!paused) renderLogs();
 };
 let quotaData = null,
   quotaTimer = null,
   quotaLoading = false,
   createdKey = "",
-  apiKeysLoading = false;
+  apiKeysLoading = false,
+  apiKeysData = null;
 const localTime = (value) =>
-  value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+  value
+    ? new Date(value).toLocaleString(window.O2I18N.dateLocale(), { hour12: false })
+    : "—";
 
 function clearCreatedKey() {
   createdKey = "";
@@ -954,9 +1040,9 @@ function clearCreatedKey() {
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
-    toast("已复制");
+    toast(t("已复制", "toast.copied"));
   } catch {
-    toast("浏览器未允许复制，请手动选中复制", true);
+    toast(t("浏览器未允许复制，请手动选中复制", "toast.copyDenied"), true);
   }
 }
 
@@ -964,7 +1050,7 @@ async function loadModelQuotas() {
   if (quotaLoading) return;
   quotaLoading = true;
   $("#quota-refresh").disabled = true;
-  $("#quota-refresh").textContent = "读取中…";
+  $("#quota-refresh").textContent = t("读取中…", "quotas.loading");
   try {
     const value = await api("/api/model-quotas");
     if (!csrf) return;
@@ -979,14 +1065,19 @@ async function loadModelQuotas() {
       select.appendChild(option);
     }
     if ([...select.options].some((option) => option.value === selected)) select.value = selected;
-    if (!select.options.length) select.appendChild(new Option("尚未配置 Go Key", ""));
+    if (!select.options.length)
+      select.appendChild(new Option(t("尚未配置 Go Key", "quotas.noKey"), ""));
     renderModelQuotas();
   } catch (error) {
-    $("#quota-status").textContent = `查询失败：${error.message}。已有显示仅为上次查询结果。`;
+    $("#quota-status").textContent = t(
+      `查询失败：${error.message}。已有显示仅为上次查询结果。`,
+      "quotas.queryFailed",
+      error.message,
+    );
   } finally {
     quotaLoading = false;
     $("#quota-refresh").disabled = false;
-    $("#quota-refresh").textContent = "刷新额度";
+    $("#quota-refresh").textContent = t("刷新额度", "quotas.refresh");
   }
 }
 
@@ -997,17 +1088,23 @@ function renderModelQuotas() {
   const cards = $("#quota-cards");
   cards.replaceChildren();
   $("#quota-status").textContent = !account
-    ? "请先在配置中心添加 OpenCode Go Key。"
+    ? t("请先在配置中心添加 OpenCode Go Key。", "quotas.addKeyFirst")
     : account.error
-      ? `${account.error}${stale ? "；下方显示上次成功数据，当前额度未知。" : "；当前额度未知。"}`
-      : "已连接 OpenCode · 共享套餐额度。多个 Key 的额度不相加。";
+      ? stale
+        ? t("{0}；下方显示上次成功数据，当前额度未知。", "quotas.staleError", account.error)
+        : t("{0}；当前额度未知。", "quotas.error", account.error)
+      : t("已连接 OpenCode · 共享套餐额度。多个 Key 的额度不相加。", "quotas.connected");
   $("#quota-updated").textContent = account?.fetched_at
-    ? `${stale ? "上次成功查询" : "额度更新时间"}：${localTime(account.fetched_at)} · 缓存 60 秒 · 来源：OpenCode Go /v1/usage`
+    ? t(
+        `${stale ? "上次成功查询" : "额度更新时间"}：${localTime(account.fetched_at)} · 缓存 60 秒 · 来源：OpenCode Go /v1/usage`,
+        stale ? "quotas.lastSuccess" : "quotas.updated",
+        localTime(account.fetched_at),
+      )
     : "";
   const windows = [
-    ["rolling", "5 小时窗口"],
-    ["weekly", "每周窗口"],
-    ["monthly", "每月窗口"],
+    ["rolling", t("5 小时窗口", "quotas.window.hour")],
+    ["weekly", t("每周窗口", "quotas.window.week")],
+    ["monthly", t("每月窗口", "quotas.window.month")],
   ];
   for (const [id, label] of windows) {
     const item = account?.windows?.[id];
@@ -1019,15 +1116,17 @@ function renderModelQuotas() {
     card.className = `quota-card${item?.remaining_percent < 20 ? " quota-low" : ""}`;
     heading.textContent = label;
     value.className = "quota-value";
-    value.textContent = item ? `≈ ${item.remaining_percent}%` : "未知";
+    value.textContent = item ? `≈ ${item.remaining_percent}%` : t("未知", "common.unknown");
     progress.max = 100;
     if (item) progress.value = item.remaining_percent;
     else progress.value = 0;
-    progress.setAttribute("aria-label", `${label}剩余额度`);
+    progress.setAttribute("aria-label", t("{0}剩余额度", "quotas.window.aria", label));
     reset.className = "quota-reset";
     reset.textContent = item
-      ? `${stale ? "历史剩余" : "剩余"} · ${item.status === "rate-limited" ? "已限额 · " : ""}重置于 ${localTime(item.resets_at)}`
-      : "等待上游额度数据";
+      ? `${stale ? t("历史剩余", "quotas.remainingHistory") : t("剩余", "quotas.remaining")} · ${
+          item.status === "rate-limited" ? t("已限额 · ", "quotas.rateLimited") : ""
+        }${t("重置于 {0}", "quotas.resetsAt", localTime(item.resets_at))}`
+      : t("等待上游额度数据", "quotas.waiting");
     card.append(heading, value, progress, reset);
     cards.appendChild(card);
   }
@@ -1036,7 +1135,11 @@ function renderModelQuotas() {
   $("#quota-model-count").textContent = `${models.length} / ${quotaData.models.length}`;
   const catalog = quotaData.catalog;
   $("#quota-catalog-status").textContent =
-    `${catalog?.stale ? "模型目录暂未更新，显示缓存 · " : ""}目录更新时间：${localTime(catalog?.updated_at)}`;
+    `${catalog?.stale ? t("模型目录暂未更新，显示缓存 · ", "quotas.catalogStale") : ""}${t(
+      `目录更新时间：${localTime(catalog?.updated_at)}`,
+      "quotas.catalogUpdated",
+      localTime(catalog?.updated_at),
+    )}`;
   const host = $("#quota-models");
   host.replaceChildren();
   for (const model of models) {
@@ -1049,19 +1152,28 @@ function renderModelQuotas() {
     );
     for (const [id] of windows) {
       const item = account?.windows?.[id];
-      appendCell(row, item ? `≈ ${item.remaining_percent}%${stale ? "（历史）" : ""}` : "未知");
+      appendCell(
+        row,
+        item ? `≈ ${item.remaining_percent}%${stale ? t("（历史）", "quotas.history") : ""}` : t("未知", "common.unknown"),
+      );
     }
     const cell = document.createElement("td"),
       button = document.createElement("button");
     button.className = "ghost";
-    button.textContent = "复制名称";
+    button.textContent = t("复制名称", "quotas.copyName");
     button.onclick = () => copyText(model.id);
     cell.appendChild(button);
     row.appendChild(cell);
     host.appendChild(row);
   }
   if (!models.length)
-    emptyRow(host, 6, quotaData.models.length ? "没有匹配的模型" : "模型目录尚未就绪，请稍后刷新");
+    emptyRow(
+      host,
+      6,
+      quotaData.models.length
+        ? t("没有匹配的模型", "diag.noMatch")
+        : t("模型目录尚未就绪，请稍后刷新", "quotas.catalogPending"),
+    );
 }
 $("#quota-refresh").onclick = loadModelQuotas;
 $("#quota-account").onchange = renderModelQuotas;
@@ -1073,9 +1185,12 @@ async function loadAPIKeys() {
   $("#api-key-refresh").disabled = true;
   try {
     const data = await api("/api/api-keys");
-    if (csrf) renderAPIKeys(data.keys);
+    if (csrf) {
+      apiKeysData = data.keys;
+      renderAPIKeys(data.keys);
+    }
   } catch (error) {
-    $("#api-key-status").textContent = `读取失败：${error.message}`;
+    $("#api-key-status").textContent = t(`读取失败：${error.message}`, "apikeys.loadFailed", error.message);
   } finally {
     apiKeysLoading = false;
     $("#api-key-refresh").disabled = false;
@@ -1090,9 +1205,10 @@ async function mutateAPIKey(id, method, body, button) {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!csrf) return;
+    apiKeysData = data.keys;
     renderAPIKeys(data.keys);
     await loadConfig();
-    toast("已保存并立即生效");
+    toast(t("已保存并立即生效", "toast.apikeys.saved"));
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -1101,38 +1217,58 @@ async function mutateAPIKey(id, method, body, button) {
 }
 
 function renderAPIKeys(keys) {
-  $("#api-key-count").textContent = `${keys.length} 个`;
-  $("#api-key-status").textContent = `${keys.filter((key) => key.enabled).length} 个已启用`;
+  $("#api-key-count").textContent = t(`${keys.length} 个`, "apikeys.count", keys.length);
+  $("#api-key-status").textContent = t(
+    `${keys.filter((key) => key.enabled).length} 个已启用`,
+    "apikeys.enabledCount",
+    keys.filter((key) => key.enabled).length,
+  );
   const host = $("#api-key-list");
   host.replaceChildren();
   for (const key of keys) {
     const row = document.createElement("tr");
     appendCell(row, key.name);
     appendCell(row, key.display, "mono");
-    appendCell(row, key.enabled ? "已启用" : "已停用", key.enabled ? "status ok" : "status warn");
+    appendCell(
+      row,
+      key.enabled ? t("已启用", "state.enabled") : t("已停用", "state.disabled"),
+      key.enabled ? "status ok" : "status warn",
+    );
     const usage = key.usage || {},
-      summary = (value = {}) => `${formatTokens(value.requests)} 次 · ${formatTokens(value.total_tokens)} tokens`;
+      summary = (value = {}) =>
+        `${formatTokens(value.requests)} ${t("次", "apikeys.times")} · ${formatTokens(value.total_tokens)} tokens`;
     appendCell(row, `${summary(usage.last_hour)} / ${summary(usage.lifetime)}`);
-    appendCell(row, key.created_at ? localTime(key.created_at) : "已有配置");
+    appendCell(
+      row,
+      key.created_at ? localTime(key.created_at) : t("已有配置", "apikeys.col.legacy"),
+    );
     const cell = document.createElement("td"),
       actions = document.createElement("div");
     actions.className = "key-actions";
     for (const [label, action] of [
       [
-        "重命名",
+        t("重命名", "apikeys.rename"),
         (button) => {
-          const name = prompt("密钥名称", key.name);
+          const name = prompt(t("密钥名称", "apikeys.namePrompt"), key.name);
           if (name !== null) mutateAPIKey(key.id, "PATCH", { name }, button);
         },
       ],
       [
-        key.enabled ? "停用" : "启用",
+        key.enabled ? t("停用", "apikeys.disable") : t("启用", "apikeys.enable"),
         (button) => mutateAPIKey(key.id, "PATCH", { enabled: !key.enabled }, button),
       ],
       [
-        "删除",
+        t("删除", "apikeys.delete"),
         (button) => {
-          if (confirm(`删除“${key.name}”后，使用它的应用将无法继续访问。确定删除？`))
+          if (
+            confirm(
+              t(
+                `删除“${key.name}”后，使用它的应用将无法继续访问。确定删除？`,
+                "apikeys.confirmDelete",
+                key.name,
+              ),
+            )
+          )
             mutateAPIKey(key.id, "DELETE", null, button);
         },
       ],
@@ -1147,7 +1283,7 @@ function renderAPIKeys(keys) {
     row.appendChild(cell);
     host.appendChild(row);
   }
-  if (!keys.length) emptyRow(host, 6, "暂无 API Key");
+  if (!keys.length) emptyRow(host, 6, t("暂无 API Key", "apikeys.empty"));
 }
 $("#api-key-form").onsubmit = async (event) => {
   event.preventDefault();
@@ -1160,6 +1296,7 @@ $("#api-key-form").onsubmit = async (event) => {
     });
     if (!csrf) return;
     createdKey = data.key;
+    apiKeysData = data.keys;
     const goModels = debugData?.models?.filter((item) => item.available_go) || [];
     const model =
       goModels.find((item) => item.model === "glm-5.3-flash")?.model ||
@@ -1171,7 +1308,7 @@ $("#api-key-form").onsubmit = async (event) => {
     $("#api-key-form").reset();
     renderAPIKeys(data.keys);
     await loadConfig();
-    toast("API Key 已创建");
+    toast(t("API Key 已创建", "toast.apikeys.created"));
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -1185,16 +1322,16 @@ $("#api-key-copy-env").onclick = () => copyText($("#api-key-env").textContent);
 let rotationData = null,
   rotationDirty = false;
 const rotationReasons = {
-  success: "成功",
-  client_canceled: "调用方取消",
-  quota_or_rate_limit: "额度不足 / 限流",
-  transport_error: "连接错误",
-  first_output_timeout: "首个输出超时",
-  stream_error: "输出中断",
-  response_read_error: "读取响应失败",
-  response_conversion_error: "响应解析或转换失败",
-  request_conversion_error: "请求转换失败",
-  upstream_error: "上游错误",
+  success: t("成功", "rotation.reason.success"),
+  client_canceled: t("调用方取消", "rotation.reason.clientCanceled"),
+  quota_or_rate_limit: t("额度不足 / 限流", "rotation.reason.quota"),
+  transport_error: t("连接错误", "rotation.reason.transport"),
+  first_output_timeout: t("首个输出超时", "rotation.reason.firstOutputTimeout"),
+  stream_error: t("输出中断", "rotation.reason.streamError"),
+  response_read_error: t("读取响应失败", "rotation.reason.readError"),
+  response_conversion_error: t("响应解析或转换失败", "rotation.reason.conversionError"),
+  request_conversion_error: t("请求转换失败", "rotation.reason.requestConversion"),
+  upstream_error: t("上游错误", "rotation.reason.upstreamError"),
 };
 async function loadRotation() {
   try {
@@ -1210,7 +1347,8 @@ async function loadRotation() {
 function renderRotation() {
   const state = rotationData;
   $("#rotation-status").textContent =
-    state.persistence_error || "状态已更新 · 两组独立轮转，所有调用方共享当前位置。";
+    state.persistence_error ||
+    t("状态已更新 · 两组独立轮转，所有调用方共享当前位置。", "rotation.status");
   $("#rotation-timeout").value = state.first_output_seconds;
   const host = $("#rotation-groups");
   host.replaceChildren();
@@ -1218,9 +1356,9 @@ function renderRotation() {
     const section = document.createElement("div");
     section.className = "section";
     const title = document.createElement("h2");
-    title.textContent = group.id === "sota" ? "SOTA" : "甜点";
+    title.textContent = group.id === "sota" ? "SOTA" : t("甜点", "rotation.sweet");
     const label = document.createElement("label");
-    label.textContent = "调用别名";
+    label.textContent = t("调用别名", "rotation.aliasLabel");
     label.htmlFor = `rotation-alias-${group.id}`;
     const input = document.createElement("input");
     input.id = label.htmlFor;
@@ -1236,11 +1374,20 @@ function renderRotation() {
     field.append(label, input);
     const current = document.createElement("p");
     current.className = "mono";
-    current.textContent = `当前模型：${group.current || "等待可用模型"}`;
+    current.textContent = t(
+      `当前模型：${group.current || "等待可用模型"}`,
+      "rotation.current",
+      group.current || t("等待可用模型", "rotation.waitingModel"),
+    );
     const table = document.createElement("table");
     table.className = "table";
     const header = document.createElement("tr");
-    for (const text of ["顺序", "模型", "状态 / 恢复时间", "操作"]) {
+    for (const text of [
+      t("顺序", "rotation.col.order"),
+      t("模型", "common.model"),
+      t("状态 / 恢复时间", "rotation.col.state"),
+      t("操作", "common.action"),
+    ]) {
       const th = document.createElement("th");
       th.textContent = text;
       header.append(th);
@@ -1259,18 +1406,18 @@ function renderRotation() {
       appendCell(
         row,
         !group.available[model]
-          ? "已下架 / 暂不可用"
+          ? t("已下架 / 暂不可用", "rotation.unavailable")
           : paused
-            ? `暂停至 ${localTime(until)}`
+            ? t(`暂停至 ${localTime(until)}`, "rotation.pausedUntil", localTime(until))
             : model === group.current
-              ? "当前使用"
-              : "可用",
+              ? t("当前使用", "rotation.inUse")
+              : t("可用", "state.available"),
       );
       const actions = document.createElement("td");
       actions.className = "rotation-actions";
       for (const [text, delta] of [
-        ["上移", -1],
-        ["下移", 1],
+        [t("上移", "rotation.moveUp"), -1],
+        [t("下移", "rotation.moveDown"), 1],
       ]) {
         const button = document.createElement("button");
         button.type = "button";
@@ -1292,9 +1439,9 @@ function renderRotation() {
       const select = document.createElement("button");
       select.type = "button";
       select.className = "ghost";
-      select.textContent = "设为当前";
+      select.textContent = t("设为当前", "rotation.setCurrent");
       select.disabled = !group.available[model];
-      select.setAttribute("aria-label", `使用 ${model}`);
+      select.setAttribute("aria-label", t(`使用 ${model}`, "rotation.useModel", model));
       select.onclick = async () => {
         select.disabled = true;
         try {
@@ -1313,7 +1460,7 @@ function renderRotation() {
           }
           state.persistence_error = result.persistence_error;
           renderRotation();
-          toast("当前模型已切换");
+          toast(t("当前模型已切换", "toast.rotation.switched"));
         } catch (error) {
           select.disabled = false;
           toast(error.message, true);
@@ -1323,14 +1470,14 @@ function renderRotation() {
       row.append(actions);
       tbody.append(row);
     });
-    if (!group.order.length) emptyRow(tbody, 4, "等待 Go 模型目录");
+    if (!group.order.length) emptyRow(tbody, 4, t("等待 Go 模型目录", "rotation.waitingCatalog"));
     const wrap = document.createElement("div");
     wrap.className = "table-wrap";
     wrap.append(table);
     const recent = document.createElement("div");
     recent.className = "rotation-switches";
     const caption = document.createElement("h3");
-    caption.textContent = "最近切换";
+    caption.textContent = t("最近切换", "rotation.recentSwitches");
     recent.append(caption);
     for (const item of (group.switches || []).slice(-5).reverse()) {
       const line = document.createElement("p");
@@ -1339,7 +1486,7 @@ function renderRotation() {
     }
     if (!group.switches?.length) {
       const line = document.createElement("p");
-      line.textContent = "尚无切换记录";
+      line.textContent = t("尚无切换记录", "rotation.noSwitches");
       recent.append(line);
     }
     section.append(title, field, current, wrap, recent);
@@ -1360,11 +1507,12 @@ function renderRotation() {
       appendCell(row, value);
     attempts.append(row);
   }
-  if (!state.attempts?.length) emptyRow(attempts, 6, "调用分组别名后显示最近 100 次尝试");
+  if (!state.attempts?.length)
+    emptyRow(attempts, 6, t("调用分组别名后显示最近 100 次尝试", "rotation.attemptsEmpty"));
 }
 $("#rotation-refresh").onclick = () => {
   if (rotationDirty) {
-    toast("有未保存的修改，请先保存后刷新", true);
+    toast(t("有未保存的修改，请先保存后刷新", "toast.rotation.dirty"), true);
     return;
   }
   loadRotation();
@@ -1384,7 +1532,7 @@ $("#rotation-form").onsubmit = async (event) => {
     rotationData = await api("/api/rotation", { method: "PUT", body: JSON.stringify(body) });
     rotationDirty = false;
     renderRotation();
-    toast("模型轮转配置已保存并生效");
+    toast(t("模型轮转配置已保存并生效", "toast.rotation.saved"));
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -1393,78 +1541,123 @@ $("#rotation-form").onsubmit = async (event) => {
 };
 boot();
 
+let availabilityData = null;
+
 async function loadAvailability() {
   try {
-    const data = await api("/api/models/availability");
-    $("#availability-error").textContent = "";
-    $("#availability-models").replaceChildren();
-    for (const item of data.models) {
-      const row = document.createElement("tr");
-      const date = (value) =>
-        value && !value.startsWith("0001-") ? new Date(value).toLocaleString() : "待探测";
-      for (const value of [
-        item.model,
-        item.disabled ? "已禁用" : "已启用",
-        [item.channel, item.reason].filter(Boolean).join(" / ") || "待探测",
-        item.manual ? "手动" : "自动",
-        item.auto_effort?.effort
-          ? `${item.auto_effort.effort}（${date(item.effort_checked_at)}）`
-          : "未验证",
-        date(item.checked_at),
-        item.manual ? "手动控制，不自动探测" : date(item.next_check),
-      ]) {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        row.append(cell);
-      }
-      const cell = document.createElement("td");
-      const button = document.createElement("button");
-      button.textContent = "恢复启用";
-      button.disabled = !item.disabled;
-      button.onclick = async () => {
-        button.disabled = true;
-        toggle.disabled = true;
-        try {
-          await api("/api/models/restore", {
-            method: "POST",
-            body: JSON.stringify({ model: item.model }),
-          });
-          await loadAvailability();
-          await loadDebugModels();
-        } catch (error) {
-          $("#availability-error").textContent = error.message;
-          button.disabled = !item.disabled;
-          toggle.disabled = false;
-        }
-      };
-      cell.append(button);
-      const toggle = document.createElement("button");
-      toggle.className = "ghost";
-      toggle.textContent = item.manual ? "切回自动" : "切为手动";
-      toggle.onclick = async () => {
-        button.disabled = true;
-        toggle.disabled = true;
-        try {
-          await api("/api/models/manual", {
-            method: "POST",
-            body: JSON.stringify({ model: item.model, manual: !item.manual }),
-          });
-          await loadAvailability();
-          await loadDebugModels();
-        } catch (error) {
-          $("#availability-error").textContent = error.message;
-          button.disabled = !item.disabled;
-          toggle.disabled = false;
-        }
-      };
-      cell.append(toggle);
-      row.append(cell);
-      $("#availability-models").append(row);
-    }
-    if (!data.models.length)
-      $("#availability-error").textContent = "当前模型目录中没有符合免费资格的模型。";
+    availabilityData = await api("/api/models/availability");
+    renderAvailability();
   } catch (error) {
     $("#availability-error").textContent = error.message;
   }
 }
+
+function renderAvailability() {
+  const data = availabilityData;
+  if (!data) return;
+  $("#availability-error").textContent = "";
+  $("#availability-models").replaceChildren();
+  for (const item of data.models) {
+    const row = document.createElement("tr");
+    const date = (value) =>
+      value && !value.startsWith("0001-")
+        ? new Date(value).toLocaleString()
+        : t("待探测", "availability.pending");
+    for (const value of [
+      item.model,
+      item.disabled ? t("已禁用", "state.disabled") : t("已启用", "state.enabled"),
+      [item.channel, item.reason].filter(Boolean).join(" / ") || t("待探测", "availability.pending"),
+      item.manual ? t("手动", "availability.manual") : t("自动", "availability.auto"),
+      item.auto_effort?.effort
+        ? `${item.auto_effort.effort}（${date(item.effort_checked_at)}）`
+        : t("未验证", "availability.unverified"),
+      date(item.checked_at),
+      item.manual
+        ? t("手动控制，不自动探测", "availability.manualControl")
+        : date(item.next_check),
+    ]) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    const cell = document.createElement("td");
+    const button = document.createElement("button");
+    button.textContent = t("恢复启用", "availability.restore");
+    button.disabled = !item.disabled;
+    button.onclick = async () => {
+      button.disabled = true;
+      toggle.disabled = true;
+      try {
+        await api("/api/models/restore", {
+          method: "POST",
+          body: JSON.stringify({ model: item.model }),
+        });
+        await loadAvailability();
+        await loadDebugModels();
+      } catch (error) {
+        $("#availability-error").textContent = error.message;
+        button.disabled = !item.disabled;
+        toggle.disabled = false;
+      }
+    };
+    cell.append(button);
+    const toggle = document.createElement("button");
+    toggle.className = "ghost";
+    toggle.textContent = item.manual
+      ? t("切回自动", "availability.switchAuto")
+      : t("切为手动", "availability.switchManual");
+    toggle.onclick = async () => {
+      button.disabled = true;
+      toggle.disabled = true;
+      try {
+        await api("/api/models/manual", {
+          method: "POST",
+          body: JSON.stringify({ model: item.model, manual: !item.manual }),
+        });
+        await loadAvailability();
+        await loadDebugModels();
+      } catch (error) {
+        $("#availability-error").textContent = error.message;
+        button.disabled = !item.disabled;
+        toggle.disabled = false;
+      }
+    };
+    cell.append(toggle);
+    row.append(cell);
+    $("#availability-models").append(row);
+  }
+  if (!data.models.length)
+    $("#availability-error").textContent = t(
+      "当前模型目录中没有符合免费资格的模型。",
+      "availability.noneEligible",
+    );
+}
 $("#availability-refresh").onclick = loadAvailability;
+
+// Re-render the text produced by JavaScript after the interface language changes.
+// Static markup is already handled by O2I18N.apply() through the data-i18n hooks.
+window.O2I18N.onChange(() => {
+  const page = location.hash.slice(1) || "overview";
+  if (pages[page]) renderPageHeader(page);
+  $("#log-pause").textContent = paused ? t("继续", "logs.resume") : t("暂停", "logs.pause");
+  if (!$("#quota-refresh").disabled) $("#quota-refresh").textContent = t("刷新额度", "quotas.refresh");
+  if (monitorData) {
+    renderResources(monitorData.resources);
+    renderBreakdowns(monitorData.metrics);
+  }
+  if (config) renderRestartNotice(config);
+  renderGuide();
+  renderUsage();
+  if (lastPlayground) displayPlayground(lastPlayground);
+  renderDiagnostics();
+  renderLogs();
+  renderAccessExamples();
+  renderPlayKeys();
+  if (quotaData) renderModelQuotas();
+  if (apiKeysData) renderAPIKeys(apiKeysData);
+  if (rotationData) renderRotation();
+  renderAvailability();
+  // Chip removal buttons carry a tooltip; keep it without rebuilding the list,
+  // so pending unsaved removals survive a language switch.
+  $$(".chips .chip button").forEach((button) => (button.title = t("移除", "common.remove")));
+});

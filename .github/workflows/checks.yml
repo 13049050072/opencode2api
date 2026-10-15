@@ -53,6 +53,8 @@ jobs:
             exit 1
           fi
       - name: Check WebUI syntax
-        run: node --check webui/app.js
+        run: |
+          node --check webui/app.js
+          node --check webui/i18n.js
       - name: Check container entrypoint syntax
         run: sh -n docker-entrypoint.sh

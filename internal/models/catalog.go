@@ -515,6 +515,9 @@ func (c *Catalog) MetadataForTier(model string, tier config.Tier) Metadata {
 	if md.MaxOutput == 0 {
 		md.MaxOutput = price.MaxOutput
 	}
+	if price.Input != nil || price.Output != nil {
+		md.Cost = &Cost{Input: price.Input, Output: price.Output, CacheRead: price.CacheRead, CacheWrite: price.CacheWrite}
+	}
 	return md
 }
 

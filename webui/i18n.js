@@ -1128,6 +1128,16 @@ window.O2I18N = (() => {
       return "";
     }
   };
+  const browserLocale = () => {
+    const candidates = [...(navigator.languages || []), navigator.language].filter(Boolean);
+    for (const candidate of candidates) {
+      const normalized = String(candidate).toLowerCase();
+      if (normalized.startsWith('zh')) return 'zh-CN';
+      if (normalized.startsWith('vi')) return 'vi';
+      if (normalized.startsWith('en')) return 'en';
+    }
+    return '';
+  };
 
   const init = () => {
     document.documentElement.lang = locale;
@@ -1143,7 +1153,8 @@ window.O2I18N = (() => {
       );
       node.onchange = (event) => setLocale(event.target.value);
     });
-    if (SUPPORTED.includes(stored())) setLocale(stored(), false);
+    const initial = SUPPORTED.includes(stored()) ? stored() : browserLocale();
+    if (initial) setLocale(initial, false);
     else apply();
     syncSelectors();
   };

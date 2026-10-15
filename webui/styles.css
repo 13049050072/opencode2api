@@ -318,9 +318,12 @@ pre,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: auto;
+  width: 34px;
   min-width: 34px;
+  max-width: 34px;
+  flex: 0 0 34px;
   height: 38px;
+  overflow: hidden;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -948,3 +951,19 @@ textarea {
   max-width: 270px;
   overflow-wrap: anywhere;
 }
+
+
+.toolbar {
+  padding-right: 40px;
+  position: relative;
+}
+
+.app-lang {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+}
+
+.login-lang { display: none !important; }

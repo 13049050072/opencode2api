@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -54,6 +55,7 @@ type anonymousCursor struct {
 	pool   *anonymousPool
 	start  int
 	offset int
+	used   []bool
 }
 
 func newAnonymousPool(enabled bool, transports *transportPool, cooldown time.Duration) *anonymousPool {
@@ -100,29 +102,56 @@ func (p *anonymousPool) CursorFor(affinity string) anonymousCursor {
 // Next visits each healthy, non-cooling static proxy at most once per cursor.
 // When the pool contains rotating proxy-pool transports (#pool), it continues
 // cycling through them after the first pass so retry.max_attempts can draw a
-// fresh upstream connection (and new exit IP) on every attempt.
+// fresh upstream connection (and new exit IP) on every attempt. If all static
+// proxies are currently cooling or marked unhealthy, Next falls back to the
+// earliest-expiring node not yet tried by this cursor instead of returning nil
+// immediately.
 func (c *anonymousCursor) Next() *anonymousNode {
 	if c.pool == nil || len(c.pool.nodes) == 0 {
 		return nil
 	}
 	n := len(c.pool.nodes)
+	if c.used == nil {
+		c.used = make([]bool, n)
+	}
 	now := time.Now().UnixNano()
 	for c.offset < n {
-		node := c.pool.nodes[(c.start+c.offset)%n]
+		idx := (c.start + c.offset) % n
 		c.offset++
-		if node.proxy.pool || (node.proxy.healthy.Load() && node.cooldownUntil.Load() <= now) {
+		node := c.pool.nodes[idx]
+		if node.proxy.pool || (!c.used[idx] && node.proxy.healthy.Load() && node.cooldownUntil.Load() <= now) {
+			c.used[idx] = true
 			return node
 		}
 	}
-	if !c.pool.hasPool {
-		return nil
-	}
-	for range n {
-		node := c.pool.nodes[(c.start+c.offset)%n]
-		c.offset++
-		if node.proxy.pool {
-			return node
+	if c.pool.hasPool {
+		for range n {
+			idx := (c.start + c.offset) % n
+			c.offset++
+			node := c.pool.nodes[idx]
+			if node.proxy.pool {
+				return node
+			}
 		}
+	}
+	choice := -1
+	var earliest int64
+	choiceHealthy := false
+	for step := range n {
+		idx := (c.start + step) % n
+		if c.used[idx] {
+			continue
+		}
+		node := c.pool.nodes[idx]
+		healthy := node.proxy.healthy.Load()
+		until := node.cooldownUntil.Load()
+		if choice < 0 || (healthy && !choiceHealthy) || (healthy == choiceHealthy && until < earliest) {
+			choice, earliest, choiceHealthy = idx, until, healthy
+		}
+	}
+	if choice >= 0 {
+		c.used[choice] = true
+		return c.pool.nodes[choice]
 	}
 	return nil
 }
@@ -217,6 +246,21 @@ func newTransportPool(proxies []string, cfg config.PerformanceConfig, responseHe
 		transport.ResponseHeaderTimeout = responseHeaderTimeout
 		transport.ForceAttemptHTTP2 = !isPool
 		transport.DisableKeepAlives = isPool
+		if isPool {
+			// Cloning DefaultTransport after its first dial inherits the
+			// already-configured HTTP/2 ALPN and TLSNextProto map, which ignores
+			// DisableKeepAlives and req.Close and multiplexes every request over
+			// one CONNECT tunnel. An explicit empty TLSNextProto map and HTTP/1.1
+			// ALPN force a brand-new TCP + CONNECT tunnel per attempt.
+			transport.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+			if transport.TLSClientConfig == nil {
+				transport.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
+			} else {
+				tlsCfg := transport.TLSClientConfig.Clone()
+				tlsCfg.NextProtos = []string{"http/1.1"}
+				transport.TLSClientConfig = tlsCfg
+			}
+		}
 		transport.DialContext = (&net.Dialer{
 			Timeout:   time.Duration(cfg.ConnectTimeoutSeconds) * time.Second,
 			KeepAlive: 30 * time.Second,

@@ -230,10 +230,6 @@ func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodie
 		keyTiers = []config.Tier{route.Tier}
 	}
 	for _, tier := range keyTiers {
-		if lastResponse != nil {
-			httpx.DrainAndClose(lastResponse.Body)
-			lastResponse = nil
-		}
 		keyRoute := route
 		keyRoute.Tier = tier
 		keyRoute.Anonymous = false
@@ -242,9 +238,20 @@ func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodie
 		resp, err, used := g.doKeyUpstream(ctx, keyRoute, bodies, ids, attempts)
 		attempts += used
 		if err == nil && resp != nil && resp.StatusCode/100 == 2 {
+			if lastResponse != nil {
+				httpx.DrainAndClose(lastResponse.Body)
+			}
 			return resp, keyRoute, attempts, nil
 		}
-		lastResponse, lastErr = resp, err
+		if resp != nil {
+			if lastResponse != nil {
+				httpx.DrainAndClose(lastResponse.Body)
+			}
+			lastResponse = resp
+		}
+		if err != nil {
+			lastErr = err
+		}
 	}
 	if lastResponse != nil {
 		return lastResponse, effectiveRoute, attempts, nil

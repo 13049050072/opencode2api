@@ -266,6 +266,9 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 	var lastErr error
 	cursor := g.anonymous.CursorFor(ids.Session)
 	limit := g.anonymous.Len()
+	if g.anonymous.HasPool() && g.cfg.Retry.MaxAttempts > limit {
+		limit = g.cfg.Retry.MaxAttempts
+	}
 	proxies := 0
 	attempts := 0
 	rawBody := bodies[config.TierZen]
@@ -319,6 +322,9 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 			req, err := newUpstreamRequest(ctx, baseURL, route.Protocol, preparedBodies[index], ids, anonymousZenKey)
 			if err != nil {
 				return nil, err, attempts
+			}
+			if node.proxy.pool {
+				req.Close = true
 			}
 			setRequestCredential(ctx, config.TierZen, "anonymous", "anonymous", true, node.proxy)
 			started := time.Now()
@@ -721,6 +727,9 @@ func (g *Gateway) doSelectedKeyUpstream(ctx context.Context, route models.Route,
 	if err != nil {
 		return nil, err, 0
 	}
+	if proxy.pool {
+		req.Close = true
+	}
 	started := time.Now()
 	resp, err := doInferenceAttempt(proxy.client, req, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second, g.attemptTimeout)
 	duration := time.Since(started)
@@ -787,6 +796,9 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 		if proxy == nil {
 			lastErr = errors.New("upstream key has no proxy binding")
 			break
+		}
+		if proxy.pool {
+			req.Close = true
 		}
 		keyID := config.KeyDisplayID(node.key)
 		setRequestCredential(ctx, route.Tier, keyID, "key", false, proxy)

@@ -21,7 +21,7 @@ const (
 // connection refusals mark a proxy unavailable. Other errors and 4xx/5xx
 // responses trigger a neutral URL check without being treated as proxy failure.
 func (g *Gateway) syncProxyResult(ctx context.Context, proxy *proxyTransport, status int, err error) bool {
-	if proxy == nil {
+	if proxy == nil || proxy.pool {
 		return false
 	}
 	if isProxyFailure(err) {
@@ -216,6 +216,9 @@ func (g *Gateway) refreshZen(ctx context.Context) []string {
 func (g *Gateway) refreshAnonymousTier(ctx context.Context, base string) []string {
 	cursor := g.anonymous.CursorFor("")
 	limit := g.anonymous.Len()
+	if g.anonymous.HasPool() && g.cfg.Retry.MaxAttempts > limit {
+		limit = g.cfg.Retry.MaxAttempts
+	}
 	for attempt := 1; attempt <= limit; attempt++ {
 		node := cursor.Next()
 		if node == nil {

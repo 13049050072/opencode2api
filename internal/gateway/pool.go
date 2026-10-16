@@ -24,6 +24,7 @@ import (
 type proxyTransport struct {
 	index    int
 	name     string
+	pool     bool
 	client   *http.Client
 	healthy  atomic.Bool
 	checking atomic.Bool
@@ -40,6 +41,7 @@ type anonymousPool struct {
 	nodes    []*anonymousNode
 	next     atomic.Uint64
 	cooldown time.Duration
+	hasPool  bool
 }
 
 type anonymousNode struct {
@@ -61,6 +63,9 @@ func newAnonymousPool(enabled bool, transports *transportPool, cooldown time.Dur
 	}
 	pool.nodes = make([]*anonymousNode, 0, len(transports.items))
 	for _, proxy := range transports.items {
+		if proxy.pool {
+			pool.hasPool = true
+		}
 		pool.nodes = append(pool.nodes, &anonymousNode{proxy: proxy})
 	}
 	return pool
@@ -71,6 +76,10 @@ func (p *anonymousPool) Len() int {
 		return 0
 	}
 	return len(p.nodes)
+}
+
+func (p *anonymousPool) HasPool() bool {
+	return p != nil && p.hasPool
 }
 
 func (p *anonymousPool) CursorFor(affinity string) anonymousCursor {
@@ -88,16 +97,30 @@ func (p *anonymousPool) CursorFor(affinity string) anonymousCursor {
 	return anonymousCursor{pool: p, start: start}
 }
 
-// Next visits each healthy, non-cooling proxy at most once per cursor.
+// Next visits each healthy, non-cooling static proxy at most once per cursor.
+// When the pool contains rotating proxy-pool transports (#pool), it continues
+// cycling through them after the first pass so retry.max_attempts can draw a
+// fresh upstream connection (and new exit IP) on every attempt.
 func (c *anonymousCursor) Next() *anonymousNode {
 	if c.pool == nil || len(c.pool.nodes) == 0 {
 		return nil
 	}
+	n := len(c.pool.nodes)
 	now := time.Now().UnixNano()
-	for c.offset < len(c.pool.nodes) {
-		node := c.pool.nodes[(c.start+c.offset)%len(c.pool.nodes)]
+	for c.offset < n {
+		node := c.pool.nodes[(c.start+c.offset)%n]
 		c.offset++
-		if node.proxy.healthy.Load() && node.cooldownUntil.Load() <= now {
+		if node.proxy.pool || (node.proxy.healthy.Load() && node.cooldownUntil.Load() <= now) {
+			return node
+		}
+	}
+	if !c.pool.hasPool {
+		return nil
+	}
+	for range n {
+		node := c.pool.nodes[(c.start+c.offset)%n]
+		c.offset++
+		if node.proxy.pool {
 			return node
 		}
 	}
@@ -145,7 +168,7 @@ func (p *anonymousPool) RestoreProxy(proxy *proxyTransport) int {
 const maxAnonymousRetryAfterMultiplier = 8
 
 func (p *anonymousPool) MarkFailure(node *anonymousNode, resp *http.Response, err error) {
-	if node == nil {
+	if node == nil || (node.proxy != nil && node.proxy.pool) {
 		return
 	}
 	if err == nil && resp != nil && resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
@@ -185,27 +208,29 @@ func (p *transportPool) healthCounts() (total, healthy int) {
 func newTransportPool(proxies []string, cfg config.PerformanceConfig, responseHeaderTimeout time.Duration) (*transportPool, error) {
 	p := &transportPool{items: make([]*proxyTransport, 0, len(proxies))}
 	for _, raw := range proxies {
+		clean, isPool := config.ParseProxyEntry(raw)
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.MaxIdleConns = cfg.MaxIdleConns
 		transport.MaxIdleConnsPerHost = cfg.MaxIdleConnsPerHost
 		transport.MaxConnsPerHost = cfg.MaxConnsPerHost
 		transport.IdleConnTimeout = time.Duration(cfg.IdleConnTimeoutSeconds) * time.Second
 		transport.ResponseHeaderTimeout = responseHeaderTimeout
-		transport.ForceAttemptHTTP2 = true
+		transport.ForceAttemptHTTP2 = !isPool
+		transport.DisableKeepAlives = isPool
 		transport.DialContext = (&net.Dialer{
 			Timeout:   time.Duration(cfg.ConnectTimeoutSeconds) * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext
-		if raw == "direct" {
+		if clean == "direct" {
 			transport.Proxy = nil
 		} else {
-			u, err := url.Parse(raw)
+			u, err := url.Parse(clean)
 			if err != nil {
 				return nil, fmt.Errorf("parse proxy %s: %w", config.RedactURL(raw), err)
 			}
 			transport.Proxy = http.ProxyURL(u)
 		}
-		proxy := &proxyTransport{index: len(p.items), name: raw, client: &http.Client{Transport: transport}}
+		proxy := &proxyTransport{index: len(p.items), name: raw, pool: isPool, client: &http.Client{Transport: transport}}
 		proxy.healthy.Store(true)
 		p.items = append(p.items, proxy)
 	}
@@ -227,7 +252,7 @@ func (p *transportPool) CheckHealth(ctx context.Context, target string, timeout 
 	results := make(chan proxyHealthResult, len(p.items))
 	checks := 0
 	for _, proxy := range p.items {
-		if proxy.healthy.Load() || !proxy.checking.CompareAndSwap(false, true) {
+		if proxy.pool || proxy.healthy.Load() || !proxy.checking.CompareAndSwap(false, true) {
 			continue
 		}
 		// A real request may have restored the proxy between the first health

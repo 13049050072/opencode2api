@@ -440,10 +440,10 @@ internal/
   protocol/              Request/response conversion and SSE parsing/output
   telemetry/             Request tracking, metrics, logs, and recovery
 webui/
-  embed.go               Embeds the three static assets into the executable
+  embed.go               Embeds the static assets into the executable
   index.html             Page structure
-  app.js                 UI behavior
-  styles.css             UI styles
+  css/                   Design tokens, base styles, components and page layouts
+  js/                    ES modules: shell, shared helpers and one module per page
 ```
 
 Suggested reading order:
@@ -451,7 +451,7 @@ Suggested reading order:
 1. [Command entry](cmd/opencode2api/main.go) → [runtime management](internal/gateway/runtime.go) → [HTTP handlers](internal/gateway/gateway.go).
 2. [Upstream attempts](internal/gateway/upstream.go) and [model routing](internal/models/catalog.go) explain how a request reaches a provider.
 3. [Request conversion](internal/protocol/request.go), [response conversion](internal/protocol/response.go), and [stream transport](internal/protocol/stream.go) cover protocol behavior.
-4. [Management routes](internal/admin/server.go) and [WebUI logic](webui/app.js) cover configuration and diagnostics.
+4. [Management routes](internal/admin/server.go) and [WebUI logic](webui/js/main.js) cover configuration and diagnostics.
 
 Run Go formatting, analysis, and the command build:
 
@@ -466,7 +466,7 @@ For local development, start the service with `go run ./cmd/opencode2api -config
 Node.js is only needed for the WebUI JavaScript syntax check:
 
 ```bash
-node --check webui/app.js
+for f in webui/js/*.js webui/js/pages/*.js; do node --input-type=module --check < "$f"; done
 ```
 
 `.editorconfig`, `.gitattributes`, and Go formatting standardize the source. CI runs `go vet` and builds with Go 1.24 and stable Go on Linux/Windows, plus Go formatting, WebUI syntax, and entrypoint shell syntax checks. Release archives include both READMEs.

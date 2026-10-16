@@ -33,7 +33,8 @@ fi
 BASE_URL=${BASE_URL%/}
 models_file=$(mktemp)
 response_file=$(mktemp)
-trap 'rm -f "$models_file" "$response_file"' EXIT
+working_models_tmp=$(mktemp ./.working-models.txt.tmp.XXXXXX)
+trap 'rm -f "$models_file" "$response_file" "$working_models_tmp"' EXIT
 
 if ! curl -sS --fail-with-body "$BASE_URL/v1/models" \
 	-H "Authorization: Bearer $API_KEY" -o "$models_file"; then
@@ -50,7 +51,12 @@ fi
 
 model_count=$(jq '.data | length' "$models_file")
 if [[ "$model_count" -eq 0 ]]; then
+	if ! mv -f "$working_models_tmp" working-models.txt; then
+		printf 'Could not write working-models.txt\n' >&2
+		exit 1
+	fi
 	printf 'No models were returned by %s/v1/models\n' "$BASE_URL"
+	printf 'An empty model list was saved to working-models.txt\n'
 	exit 0
 fi
 
@@ -109,6 +115,7 @@ while IFS=$'\t' read -r model protocol; do
 	if [[ "$curl_ok" == true && "$status" =~ ^2[0-9][0-9]$ ]] \
 		&& jq -e 'type == "object" and (has("error") | not)' "$response_file" >/dev/null 2>&1; then
 		printf 'PASS  %s (%s, HTTP %s)\n' "$model" "$protocol" "$status"
+		printf '%s\n' "$model" >> "$working_models_tmp"
 		passed=$((passed + 1))
 	else
 		message=$(jq -r '.error.message // .message // empty' "$response_file" 2>/dev/null | head -c 200)
@@ -121,8 +128,14 @@ while IFS=$'\t' read -r model protocol; do
 	fi
 done < <(jq -r '.data[] | [.id, (.native_protocol // "chat")] | @tsv' "$models_file")
 
+if ! mv -f "$working_models_tmp" working-models.txt; then
+	printf 'Could not write working-models.txt\n' >&2
+	exit 1
+fi
+
 printf '\nSummary: %s passed, %s failed, %s skipped (total %s)\n' \
 	"$passed" "$failed" "$skipped" "$model_count"
+printf 'Working model list saved to working-models.txt\n'
 if [[ "$failed" -gt 0 || "$skipped" -gt 0 ]]; then
 	exit 1
 fi

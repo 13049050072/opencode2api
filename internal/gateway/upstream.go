@@ -283,15 +283,16 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 		return nil, errors.New("no prepared Zen request body"), 0
 	}
 	// The anonymous free tier only serves agent-shaped streaming requests
-	// carrying the core tool definitions (anything else is rejected with 403
+	// carrying the required tool definitions (anything else is rejected with 403
 	// FreeTierError). Normalize the wire body per upstream gate (legacy /zen/v1
 	// vs /inference); the gateway collapses the stream back when the downstream
 	// client asked for a plain JSON reply. Key tiers keep their original bodies.
 	protocol := route.ProtocolFor(config.TierZen)
 	upstreams := g.anonymousUpstreams()
 	preparedBodies := make([][]byte, len(upstreams))
+	toolAliases := make([]string, len(upstreams))
 	for i, baseURL := range upstreams {
-		preparedBodies[i] = prepareAnonymousBody(rawBody, protocol, isLegacyZenUpstream(baseURL))
+		preparedBodies[i], toolAliases[i] = prepareAnonymousBody(rawBody, protocol, isLegacyZenUpstream(baseURL))
 	}
 	for proxies < limit {
 		if ctx.Err() != nil {
@@ -321,6 +322,7 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 			if meta := telemetry.MetaFromContext(ctx); meta != nil {
 				meta.Attempts = attemptOffset + attempts
 				meta.Tier = string(config.TierZen)
+				meta.ToolAlias = toolAliases[index]
 			}
 			if lastResponse != nil {
 				httpx.DrainAndClose(lastResponse.Body)
@@ -407,10 +409,17 @@ func isLegacyZenUpstream(baseURL string) bool {
 	return strings.HasSuffix(trimmed, "/zen")
 }
 
-// legacyAnonymousCoreTools are the pre-2.x OpenCode 1.18.x tool names expected
-// by the legacy /zen/v1 free-tier gate ("bash" + "read" required; minimal stub
-// definitions pass without schema validation, matching v1.3.7).
-var legacyAnonymousCoreTools = []string{"bash", "edit", "glob", "grep", "read"}
+// legacyAnonymousReadTool is the single tool name required by the legacy
+// /zen/v1 free-tier gate. Unlike /inference, the /zen/v1 gate does not require
+// a shell/edit/glob/grep toolset and does not validate tool descriptions or
+// parameter schemas: a single tool named "read" is sufficient.
+const legacyAnonymousReadTool = "read"
+
+// legacyDeprecatedReadDescription is attached when the gateway must inject a
+// placeholder "read" tool on the legacy /zen/v1 lane because the client
+// request declared no read-related tool of its own. It explicitly tells the
+// model that the tool is deprecated and must never be invoked.
+const legacyDeprecatedReadDescription = "DEPRECATED: This tool is deprecated and disabled. Do NOT call or reference this tool under any circumstances; ignore it completely."
 
 // anonymousCoreTools are the tool names the /inference free-tier gate expects
 // on an agent-shaped request. Requests without a shell tool and a read tool are
@@ -462,20 +471,26 @@ func knownOpencodeTool(name string) (opencodeToolDefinition, bool) {
 }
 
 // prepareAnonymousBody returns a copy of body normalized for the anonymous
-// free tier: streaming enabled plus the core agent tools present (using
-// v1.3.7 minimal stubs with legacyAnonymousCoreTools for the legacy /zen/v1
-// gate, and anonymousCoreTools with genuine definitions for the /inference
-// gate). Bodies that already satisfy all of that (or are not JSON objects) are
-// returned unchanged. System One payloads are decision requests, not agent
-// traffic, so they are forwarded verbatim; injecting streaming or tool
-// definitions would make the upstream reject them.
-func prepareAnonymousBody(body []byte, protocol wire.Protocol, legacy bool) []byte {
+// free tier alongside any original client tool name that was aliased to "read"
+// for the legacy /zen/v1 gate.
+//
+// On the legacy /zen/v1 gate (legacy == true), pre-injection of other tools is
+// dropped: if the client declared a read-related tool (case-insensitive, e.g.
+// "reAd", "Read_file", "readFile"), it is renamed in-place to "read" while
+// keeping its original description and parameters, and its original name is
+// returned so the gateway can restore it in the downstream response; if no
+// read-related tool is present, a single deprecated "read" stub is injected.
+//
+// On the /inference gate (legacy == false), anonymousCoreTools with genuine
+// CLI 2.x definitions are ensured. System One payloads are decision requests,
+// not agent traffic, so they are forwarded verbatim.
+func prepareAnonymousBody(body []byte, protocol wire.Protocol, legacy bool) ([]byte, string) {
 	if protocol == wire.SystemOne {
-		return body
+		return body, ""
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return body
+		return body, ""
 	}
 	changed := false
 	if streaming, ok := payload["stream"].(bool); !ok || !streaming {
@@ -485,17 +500,26 @@ func prepareAnonymousBody(body []byte, protocol wire.Protocol, legacy bool) []by
 	if ensureAnonymousChatUsage(payload, protocol) {
 		changed = true
 	}
-	if ensureAnonymousTools(payload, protocol, legacy) {
+	var alias string
+	if legacy {
+		var toolChanged bool
+		alias, toolChanged = ensureLegacyAnonymousReadTool(payload, protocol)
+		if toolChanged {
+			changed = true
+		}
+	} else if ensureAnonymousTools(payload, protocol) {
 		changed = true
 	}
 	if !changed {
-		return body
+		return body, alias
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return body
+		// The alias is dropped with the failed re-encode: the body never left
+		// the gateway, so there is nothing downstream to restore.
+		return body, ""
 	}
-	return encoded
+	return encoded, alias
 }
 
 // ensureAnonymousChatUsage keeps token usage available when a non-streaming
@@ -518,25 +542,184 @@ func ensureAnonymousChatUsage(payload map[string]any, protocol wire.Protocol) bo
 	return true
 }
 
-// ensureAnonymousTools makes the tool list read as an agent session.
-//
-// On the legacy /zen/v1 gate (legacy == true), only tool names matter ("bash" +
-// "read" required): client-declared tools are preserved untouched so downstream
-// function calling schemas for tools like "read", "edit", "write", or "bash"
-// are never clobbered, and lightweight v1.3.7 stubs are appended for any
-// missing legacy core tools.
-//
-// On the newer /inference gate (legacy == false), every recognised OpenCode
-// tool must carry its genuine CLI 2.x definition and missing core tools are
-// appended with genuine schemas; unrecognised client tools are left untouched.
-func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy bool) bool {
-	coreTools := anonymousCoreTools
-	if legacy {
-		coreTools = legacyAnonymousCoreTools
-	}
+// ensureLegacyAnonymousReadTool satisfies the legacy /zen/v1 free-tier gate
+// using only the single "read" tool requirement:
+//  1. If the client already has an exact "read" tool, nothing is injected or
+//     renamed.
+//  2. If the client has a read-related tool (case-insensitive match such as
+//     "reAd", "read_file", "ReadFile", etc.), that tool is renamed to "read"
+//     (preserving its client description and schema), any matching tool_choice
+//     or historical tool call in the request is rewritten to "read", and the
+//     client's original tool name is returned so responses can be restored.
+//  3. If the client has no read-related tool at all, a single "read" stub tool
+//     is appended with a deprecated/ignore description so the model never
+//     invokes it.
+func ensureLegacyAnonymousReadTool(payload map[string]any, protocol wire.Protocol) (string, bool) {
 	raw, exists := payload["tools"]
 	if !exists {
-		payload["tools"] = anonymousToolset(protocol, coreTools, legacy)
+		payload["tools"] = []any{legacyDeprecatedReadTool(protocol)}
+		return "", true
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return "", false
+	}
+	candidateIndex := -1
+	candidateName := ""
+	for index, item := range items {
+		name := anonymousToolName(protocol, item)
+		if name == "" {
+			continue
+		}
+		if name == legacyAnonymousReadTool {
+			return "", false
+		}
+		if strings.EqualFold(name, legacyAnonymousReadTool) {
+			candidateIndex = index
+			candidateName = name
+			break
+		}
+		if candidateIndex < 0 && isLegacyReadToolCandidate(name) {
+			candidateIndex = index
+			candidateName = name
+		}
+	}
+	if candidateIndex >= 0 {
+		setAnonymousToolName(protocol, items[candidateIndex], legacyAnonymousReadTool)
+		rewriteLegacyRequestToolReferences(payload, protocol, candidateName, legacyAnonymousReadTool)
+		payload["tools"] = items
+		return candidateName, true
+	}
+	items = append(items, legacyDeprecatedReadTool(protocol))
+	payload["tools"] = items
+	return "", true
+}
+
+// isLegacyReadToolCandidate reports whether a client tool name represents a
+// read-related tool (case-insensitive), such as "reAd", "read_file",
+// "ReadFile", "file_read", or "view_file".
+func isLegacyReadToolCandidate(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if lower == "" {
+		return false
+	}
+	if lower == "read" {
+		return true
+	}
+	normalized := strings.NewReplacer("_", "", "-", "", ".", "").Replace(lower)
+	switch normalized {
+	case "readfile", "fileread", "readfiles", "readtext", "readtextfile", "readcontent", "viewfile":
+		return true
+	}
+	return strings.HasPrefix(lower, "read_") || strings.HasPrefix(lower, "read-") || strings.HasSuffix(lower, "_read") || strings.HasSuffix(lower, "-read")
+}
+
+// setAnonymousToolName updates the function name of a tool definition in-place
+// while keeping all other client fields (description, parameters/input_schema,
+// strict, etc.) intact.
+func setAnonymousToolName(protocol wire.Protocol, item any, name string) {
+	entry, ok := item.(map[string]any)
+	if !ok {
+		return
+	}
+	if protocol == wire.Chat {
+		if function, ok := entry["function"].(map[string]any); ok {
+			function["name"] = name
+		}
+		return
+	}
+	entry["name"] = name
+}
+
+// rewriteLegacyRequestToolReferences renames any named tool_choice and
+// assistant tool-call history entries from fromName to toName so the outbound
+// request stays self-consistent after a client read tool is aliased to "read".
+func rewriteLegacyRequestToolReferences(payload map[string]any, protocol wire.Protocol, fromName, toName string) {
+	if fromName == "" || fromName == toName {
+		return
+	}
+	switch protocol {
+	case wire.Chat:
+		if choice, ok := payload["tool_choice"].(map[string]any); ok {
+			if function, ok := choice["function"].(map[string]any); ok && jsonutil.StringAt(function, "name") == fromName {
+				function["name"] = toName
+			}
+		}
+		for _, rawMsg := range jsonutil.SliceAt(payload, "messages") {
+			msg, _ := rawMsg.(map[string]any)
+			for _, rawCall := range jsonutil.SliceAt(msg, "tool_calls") {
+				call, _ := rawCall.(map[string]any)
+				if function, ok := call["function"].(map[string]any); ok && jsonutil.StringAt(function, "name") == fromName {
+					function["name"] = toName
+				}
+			}
+		}
+	case wire.Responses:
+		if choice, ok := payload["tool_choice"].(map[string]any); ok && jsonutil.StringAt(choice, "name") == fromName {
+			choice["name"] = toName
+		}
+		for _, rawItem := range jsonutil.SliceAt(payload, "input") {
+			item, _ := rawItem.(map[string]any)
+			if jsonutil.StringAt(item, "type") == "function_call" && jsonutil.StringAt(item, "name") == fromName {
+				item["name"] = toName
+			}
+		}
+	case wire.Anthropic:
+		if choice, ok := payload["tool_choice"].(map[string]any); ok && jsonutil.StringAt(choice, "name") == fromName {
+			choice["name"] = toName
+		}
+		for _, rawMsg := range jsonutil.SliceAt(payload, "messages") {
+			msg, _ := rawMsg.(map[string]any)
+			for _, rawBlock := range jsonutil.SliceAt(msg, "content") {
+				block, _ := rawBlock.(map[string]any)
+				if jsonutil.StringAt(block, "type") == "tool_use" && jsonutil.StringAt(block, "name") == fromName {
+					block["name"] = toName
+				}
+			}
+		}
+	}
+}
+
+// legacyDeprecatedReadTool builds the single placeholder "read" tool injected
+// on the legacy /zen/v1 lane when the client request has no read-related tool
+// of its own. Its description marks the tool as deprecated and instructs the
+// model to ignore it completely.
+func legacyDeprecatedReadTool(protocol wire.Protocol) map[string]any {
+	parameters := map[string]any{"type": "object", "properties": map[string]any{}}
+	switch protocol {
+	case wire.Chat:
+		return map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        legacyAnonymousReadTool,
+				"description": legacyDeprecatedReadDescription,
+				"parameters":  parameters,
+			},
+		}
+	case wire.Anthropic:
+		return map[string]any{
+			"name":         legacyAnonymousReadTool,
+			"description":  legacyDeprecatedReadDescription,
+			"input_schema": parameters,
+		}
+	default:
+		return map[string]any{
+			"type":        "function",
+			"name":        legacyAnonymousReadTool,
+			"description": legacyDeprecatedReadDescription,
+			"parameters":  parameters,
+		}
+	}
+}
+
+// ensureAnonymousTools makes the tool list read as an OpenCode 2.x agent
+// session on the /inference gate: every recognised OpenCode tool carries its
+// genuine CLI 2.x definition and missing core tools are appended with genuine
+// schemas; unrecognised client tools are left untouched.
+func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol) bool {
+	raw, exists := payload["tools"]
+	if !exists {
+		payload["tools"] = anonymousToolset(protocol, anonymousCoreTools)
 		return true
 	}
 	items, ok := raw.([]any)
@@ -551,24 +734,19 @@ func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy
 			continue
 		}
 		present[name] = true
-		// Only the /inference gate validates tool schemas byte-for-byte; on the
-		// legacy /zen/v1 lane, preserve client-declared tool definitions as in
-		// v1.3.7 so downstream tools sharing OpenCode names keep their schemas.
-		if !legacy {
-			if _, known := knownOpencodeTool(name); known {
-				items[index] = anonymousTool(protocol, name, false)
-				changed = true
-			}
+		if _, known := knownOpencodeTool(name); known {
+			items[index] = anonymousTool(protocol, name)
+			changed = true
 		}
 	}
-	missing := make([]string, 0, len(coreTools))
-	for _, name := range coreTools {
+	missing := make([]string, 0, len(anonymousCoreTools))
+	for _, name := range anonymousCoreTools {
 		if !present[name] {
 			missing = append(missing, name)
 		}
 	}
 	if len(missing) > 0 {
-		items = append(items, anonymousToolset(protocol, missing, legacy)...)
+		items = append(items, anonymousToolset(protocol, missing)...)
 		changed = true
 	}
 	if !changed {
@@ -589,41 +767,32 @@ func anonymousToolName(protocol wire.Protocol, item any) string {
 	return jsonutil.StringAt(entry, "name")
 }
 
-// anonymousToolset returns the wire-shaped definitions for the given tool names
-// (using minimal v1.3.7 stubs when legacy is true, or genuine CLI definitions
-// for the /inference gate when legacy is false).
-func anonymousToolset(protocol wire.Protocol, names []string, legacy bool) []any {
+// anonymousToolset returns the wire-shaped genuine CLI 2.x definitions for the
+// given tool names on the /inference gate.
+func anonymousToolset(protocol wire.Protocol, names []string) []any {
 	if names == nil {
-		if legacy {
-			names = legacyAnonymousCoreTools
-		} else {
-			names = anonymousCoreTools
-		}
+		names = anonymousCoreTools
 	}
 	tools := make([]any, 0, len(names))
 	for _, name := range names {
-		if tool := anonymousTool(protocol, name, legacy); tool != nil {
+		if tool := anonymousTool(protocol, name); tool != nil {
 			tools = append(tools, tool)
 		}
 	}
 	return tools
 }
 
-// anonymousTool renders one core tool in the shape the given protocol expects.
-// On the legacy /zen/v1 lane (legacy == true) it emits the lightweight v1.3.7
-// stub without embedding the large CLI 2.x schema; on the /inference lane
-// (legacy == false) it uses the genuine OpenCode definition whenever one is
-// known. SystemOne payloads never reach this path (prepareAnonymousBody
-// forwards them verbatim), so it falls back to the Responses/default shape.
-func anonymousTool(protocol wire.Protocol, name string, legacy bool) map[string]any {
+// anonymousTool renders one core tool in the shape the given protocol expects,
+// using the genuine OpenCode CLI 2.x definition whenever one is known.
+// SystemOne payloads never reach this path (prepareAnonymousBody forwards them
+// verbatim), so it falls back to the Responses/default shape.
+func anonymousTool(protocol wire.Protocol, name string) map[string]any {
 	description := "Agent tool " + name
 	parameters := map[string]any{"type": "object", "properties": map[string]any{}}
-	if !legacy {
-		if definition, ok := knownOpencodeTool(name); ok {
-			description = definition.Description
-			if definition.Parameters != nil {
-				parameters = definition.Parameters
-			}
+	if definition, ok := knownOpencodeTool(name); ok {
+		description = definition.Description
+		if definition.Parameters != nil {
+			parameters = definition.Parameters
 		}
 	}
 	switch protocol {
@@ -694,21 +863,22 @@ func (g *Gateway) dumpOutboundBodies(route models.Route, bodies map[config.Tier]
 }
 
 // shapeKeyBody normalizes key-tier free-model wire bodies to agent shape
-// (stream + core tools), mirroring the anonymous lane. Upstream now
+// (stream + required tools), mirroring the anonymous lane. Upstream now
 // rejects non-agent-shaped free-tier requests on every lane with 403
-// FreeTierError; paid models keep their original bodies. It reports
-// whether the body changed so the gateway can collapse the SSE stream a
-// non-streaming client receives back.
-func (g *Gateway) shapeKeyBody(body []byte, route models.Route, tier config.Tier) ([]byte, bool) {
+// FreeTierError; paid models keep their original bodies. It reports the
+// shaped body, any legacy "read" tool alias that must be restored in the
+// response, and whether the body changed so the gateway can collapse the SSE
+// stream a non-streaming client receives back.
+func (g *Gateway) shapeKeyBody(body []byte, route models.Route, tier config.Tier) ([]byte, string, bool) {
 	if !g.catalog.IsFreeModel(route.ID) {
-		return body, false
+		return body, "", false
 	}
 	baseURL := g.cfg.Upstream.Zen
 	if tier == config.TierGo {
 		baseURL = g.cfg.Upstream.Go
 	}
-	shaped := prepareAnonymousBody(body, route.ProtocolFor(tier), isLegacyZenUpstream(baseURL))
-	return shaped, !bytes.Equal(shaped, body)
+	shaped, alias := prepareAnonymousBody(body, route.ProtocolFor(tier), isLegacyZenUpstream(baseURL))
+	return shaped, alias, !bytes.Equal(shaped, body)
 }
 
 // key. It performs no failover at all — no anonymous lane, no other key and no
@@ -731,11 +901,13 @@ func (g *Gateway) doSelectedKeyUpstream(ctx context.Context, route models.Route,
 	if len(body) == 0 {
 		return nil, fmt.Errorf("no prepared %s request body", override.Tier), 0
 	}
-	if shaped, changed := g.shapeKeyBody(body, route, override.Tier); changed {
+	shaped, alias, changed := g.shapeKeyBody(body, route, override.Tier)
+	if changed {
 		body = shaped
-		if meta := telemetry.MetaFromContext(ctx); meta != nil {
-			meta.Shaped = true
-		}
+	}
+	if meta := telemetry.MetaFromContext(ctx); meta != nil {
+		meta.Shaped = changed
+		meta.ToolAlias = alias
 	}
 	proxy := nodes.Proxy(node)
 	if proxy == nil {
@@ -782,11 +954,13 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 	if len(body) == 0 {
 		return nil, fmt.Errorf("no prepared %s request body", route.Tier), 0
 	}
-	if shaped, changed := g.shapeKeyBody(body, route, route.Tier); changed {
+	shaped, alias, changed := g.shapeKeyBody(body, route, route.Tier)
+	if changed {
 		body = shaped
-		if meta := telemetry.MetaFromContext(ctx); meta != nil {
-			meta.Shaped = true
-		}
+	}
+	if meta := telemetry.MetaFromContext(ctx); meta != nil {
+		meta.Shaped = changed
+		meta.ToolAlias = alias
 	}
 	for attempts < g.cfg.Retry.MaxAttempts {
 		if ctx.Err() != nil {

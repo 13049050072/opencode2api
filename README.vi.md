@@ -171,6 +171,8 @@ curl http://localhost:8080/v1/systemone \
 
 System One ghép một state tự do với các câu hỏi có kiểu và trả về câu trả lời có kiểu, nên payload này không dùng chung hình dạng với cầu nối chat/responses và được chuyển tiếp nguyên văn, không bao giờ dịch. Chỉ những mô hình có giao thức gốc là System One mới được phục vụ tại đây; một payload quyết định gửi tới endpoint message (`/v1/chat/completions`, `/v1/responses`) cũng được chuyển tiếp nguyên văn thay vì chuyển đổi. Câu trả lời streaming từ upstream được chuyển tiếp nguyên trạng, không khôi phục luồng.
 
+Để kiểm tra các mô hình và lưu ID của những mô hình gọi thành công vào `working-models.txt`, chạy `bash scripts/check-models.sh`. Script dùng `config.json` để lấy `server_keys` và sẽ hỏi xác nhận trước khi gửi request; thêm `--yes` để bỏ qua xác nhận.
+
 ### Ranh giới tương thích
 
 Request dùng giao thức gốc của upstream sẽ giữ nguyên các trường riêng của nhà cung cấp. Request đi qua nhiều giao thức sẽ đi qua một biểu diễn chung; không phải tuỳ chọn nào cũng có phần tương đương. Ví dụ, ràng buộc output JSON của Chat và `seed` không được chuyển tiếp sang Anthropic Messages. Nội dung hoặc loại tool không được hỗ trợ có thể bị từ chối.

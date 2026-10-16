@@ -326,7 +326,7 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 				httpx.DrainAndClose(lastResponse.Body)
 				lastResponse = nil
 			}
-			req, err := newUpstreamRequest(ctx, baseURL, route.Protocol, preparedBodies[index], ids, anonymousZenKey)
+			req, err := newUpstreamRequest(ctx, baseURL, protocol, preparedBodies[index], ids, anonymousZenKey)
 			if err != nil {
 				return nil, err, attempts
 			}
@@ -408,8 +408,8 @@ func isLegacyZenUpstream(baseURL string) bool {
 }
 
 // legacyAnonymousCoreTools are the pre-2.x OpenCode 1.18.x tool names expected
-// by the legacy /zen/v1 free-tier gate ("bash" + "read" required; stub
-// definitions pass without schema validation).
+// by the legacy /zen/v1 free-tier gate ("bash" + "read" required; minimal stub
+// definitions pass without schema validation, matching v1.3.7).
 var legacyAnonymousCoreTools = []string{"bash", "edit", "glob", "grep", "read"}
 
 // anonymousCoreTools are the tool names the /inference free-tier gate expects
@@ -428,11 +428,12 @@ var legacyAnonymousCoreTools = []string{"bash", "edit", "glob", "grep", "read"}
 var anonymousCoreTools = []string{"shell", "edit", "glob", "grep", "read"}
 
 // opencodeToolsJSON holds the genuine OpenCode tool definitions (description
-// and JSON schema) captured from the official client. The free tier checks the
-// definition of every tool whose name it recognises, so a synthesised stub —
-// even one carrying the right name — is rejected with 403 FreeTierError. The
-// gateway therefore ships the real definitions and uses them both for the tools
-// it injects and for any same-named tool the downstream client declared.
+// and JSON schema) captured from the official client. The /inference free-tier
+// gate checks the definition of every tool whose name it recognises, so a
+// synthesised stub — even one carrying the right name — is rejected with 403
+// FreeTierError. The gateway therefore ships the real definitions for the
+// /inference lane and uses them both for the tools it injects and for any
+// same-named tool the downstream client declared.
 //
 //go:embed opencode_tools.json
 var opencodeToolsJSON []byte
@@ -462,12 +463,12 @@ func knownOpencodeTool(name string) (opencodeToolDefinition, bool) {
 
 // prepareAnonymousBody returns a copy of body normalized for the anonymous
 // free tier: streaming enabled plus the core agent tools present (using
-// legacyAnonymousCoreTools for the legacy /zen/v1 gate and anonymousCoreTools
-// with genuine definitions for the /inference gate). Bodies that already
-// satisfy all of that (or are not JSON objects) are returned unchanged. System
-// One payloads are decision requests, not agent traffic, so they are forwarded
-// verbatim; injecting streaming or tool definitions would make the upstream
-// reject them.
+// v1.3.7 minimal stubs with legacyAnonymousCoreTools for the legacy /zen/v1
+// gate, and anonymousCoreTools with genuine definitions for the /inference
+// gate). Bodies that already satisfy all of that (or are not JSON objects) are
+// returned unchanged. System One payloads are decision requests, not agent
+// traffic, so they are forwarded verbatim; injecting streaming or tool
+// definitions would make the upstream reject them.
 func prepareAnonymousBody(body []byte, protocol wire.Protocol, legacy bool) []byte {
 	if protocol == wire.SystemOne {
 		return body
@@ -517,12 +518,17 @@ func ensureAnonymousChatUsage(payload map[string]any, protocol wire.Protocol) bo
 	return true
 }
 
-// ensureAnonymousTools makes the tool list read as an agent session: every
-// recognised OpenCode tool carries its genuine definition, and the missing
-// core tools (legacy /zen/v1 or /inference) are appended. It reports whether
-// the payload changed. Tools whose names upstream does not recognise are left
-// exactly as the client declared them, so downstream function calling keeps
-// working.
+// ensureAnonymousTools makes the tool list read as an agent session.
+//
+// On the legacy /zen/v1 gate (legacy == true), only tool names matter ("bash" +
+// "read" required): client-declared tools are preserved untouched so downstream
+// function calling schemas for tools like "read", "edit", "write", or "bash"
+// are never clobbered, and lightweight v1.3.7 stubs are appended for any
+// missing legacy core tools.
+//
+// On the newer /inference gate (legacy == false), every recognised OpenCode
+// tool must carry its genuine CLI 2.x definition and missing core tools are
+// appended with genuine schemas; unrecognised client tools are left untouched.
 func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy bool) bool {
 	coreTools := anonymousCoreTools
 	if legacy {
@@ -530,7 +536,7 @@ func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy
 	}
 	raw, exists := payload["tools"]
 	if !exists {
-		payload["tools"] = anonymousToolset(protocol, coreTools)
+		payload["tools"] = anonymousToolset(protocol, coreTools, legacy)
 		return true
 	}
 	items, ok := raw.([]any)
@@ -545,12 +551,14 @@ func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy
 			continue
 		}
 		present[name] = true
-		// A declared definition for a recognised tool name is replaced with the
-		// genuine one: the free tier rejects a stub, and a client that happens to
-		// use the same name with its own schema would otherwise fail the request.
-		if _, known := knownOpencodeTool(name); known {
-			items[index] = anonymousTool(protocol, name)
-			changed = true
+		// Only the /inference gate validates tool schemas byte-for-byte; on the
+		// legacy /zen/v1 lane, preserve client-declared tool definitions as in
+		// v1.3.7 so downstream tools sharing OpenCode names keep their schemas.
+		if !legacy {
+			if _, known := knownOpencodeTool(name); known {
+				items[index] = anonymousTool(protocol, name, false)
+				changed = true
+			}
 		}
 	}
 	missing := make([]string, 0, len(coreTools))
@@ -560,7 +568,7 @@ func ensureAnonymousTools(payload map[string]any, protocol wire.Protocol, legacy
 		}
 	}
 	if len(missing) > 0 {
-		items = append(items, anonymousToolset(protocol, missing)...)
+		items = append(items, anonymousToolset(protocol, missing, legacy)...)
 		changed = true
 	}
 	if !changed {
@@ -581,32 +589,41 @@ func anonymousToolName(protocol wire.Protocol, item any) string {
 	return jsonutil.StringAt(entry, "name")
 }
 
-// anonymousToolset returns the official wire-shaped definitions for the
-// given tool names (all core tools when names is nil).
-func anonymousToolset(protocol wire.Protocol, names []string) []any {
+// anonymousToolset returns the wire-shaped definitions for the given tool names
+// (using minimal v1.3.7 stubs when legacy is true, or genuine CLI definitions
+// for the /inference gate when legacy is false).
+func anonymousToolset(protocol wire.Protocol, names []string, legacy bool) []any {
 	if names == nil {
-		names = anonymousCoreTools
+		if legacy {
+			names = legacyAnonymousCoreTools
+		} else {
+			names = anonymousCoreTools
+		}
 	}
 	tools := make([]any, 0, len(names))
 	for _, name := range names {
-		if tool := anonymousTool(protocol, name); tool != nil {
+		if tool := anonymousTool(protocol, name, legacy); tool != nil {
 			tools = append(tools, tool)
 		}
 	}
 	return tools
 }
 
-// anonymousTool renders one core tool in the shape the given protocol expects,
-// using the genuine OpenCode definition whenever one is known. SystemOne
-// payloads never reach this path (prepareAnonymousBody forwards them
-// verbatim), so it falls back to the Chat shape.
-func anonymousTool(protocol wire.Protocol, name string) map[string]any {
+// anonymousTool renders one core tool in the shape the given protocol expects.
+// On the legacy /zen/v1 lane (legacy == true) it emits the lightweight v1.3.7
+// stub without embedding the large CLI 2.x schema; on the /inference lane
+// (legacy == false) it uses the genuine OpenCode definition whenever one is
+// known. SystemOne payloads never reach this path (prepareAnonymousBody
+// forwards them verbatim), so it falls back to the Responses/default shape.
+func anonymousTool(protocol wire.Protocol, name string, legacy bool) map[string]any {
 	description := "Agent tool " + name
 	parameters := map[string]any{"type": "object", "properties": map[string]any{}}
-	if definition, ok := knownOpencodeTool(name); ok {
-		description = definition.Description
-		if definition.Parameters != nil {
-			parameters = definition.Parameters
+	if !legacy {
+		if definition, ok := knownOpencodeTool(name); ok {
+			description = definition.Description
+			if definition.Parameters != nil {
+				parameters = definition.Parameters
+			}
 		}
 	}
 	switch protocol {
@@ -963,26 +980,27 @@ func newUpstreamRequest(ctx context.Context, baseURL string, protocol wire.Proto
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	// Upstream fingerprints the client on every tier: it wants the OpenCode
-	// User-Agent shape, x-opencode-session-id, and a bare 40-character hex
-	// x-opencode-project, and it rejects the gateway's own x-opencode-request
-	// header. Dropping or changing any one of them turns the request into a 403
-	// FreeTierError, so the client's header set is mirrored exactly.
-	req.Header.Set("User-Agent", httpx.UserAgent())
 	req.Header.Set("x-opencode-client", "cli")
-	// The free tier requires both session headers to carry the same
-	// descending-encoded id. The x-opencode-request correlation header and
-	// canonical prj_* project ids are rejected with 403 since 2026-10-14, so
-	// neither is forwarded; tracing stays local to this gateway.
 	req.Header.Set("x-opencode-session", ids.Session)
-	req.Header.Set("x-opencode-session-id", ids.Session)
 	req.Header.Set("x-session-affinity", ids.Session)
 	req.Header.Set("X-Session-Id", ids.Session)
-	// A canonical prj_* project id is rejected with 403 since 2026-10-14; the
-	// client's own bare 40-hex shape (or any non-canonical value, e.g.
-	// "global") passes. Hash the local project signal into the accepted shape
-	// so one conversation stays pinned to one upstream project.
-	req.Header.Set("x-opencode-project", clientProjectID(ids.Project))
+	if isLegacyZenUpstream(baseURL) {
+		// The legacy /zen/v1 origin uses the pre-2.x OpenCode 1.18.x request
+		// shape from v1.3.7: the legacy User-Agent, x-opencode-request, and a
+		// canonical prj_* project id.
+		req.Header.Set("User-Agent", httpx.LegacyUserAgent())
+		req.Header.Set("x-opencode-request", ids.Request)
+		req.Header.Set("x-opencode-project", legacyProjectID(ids.Project))
+	} else {
+		// The newer /inference gate fingerprints the 2.x CLI header set: it
+		// wants the "opencode/<channel>/<version>/cli" User-Agent, both
+		// session headers set to the same descending-encoded id, and a bare
+		// 40-character hex x-opencode-project, and it rejects x-opencode-request
+		// and canonical prj_* project ids with 403 FreeTierError.
+		req.Header.Set("User-Agent", httpx.UserAgent())
+		req.Header.Set("x-opencode-session-id", ids.Session)
+		req.Header.Set("x-opencode-project", clientProjectID(ids.Project))
+	}
 	if ids.ParentSession != "" {
 		req.Header.Set("x-parent-session-id", ids.ParentSession)
 	}
@@ -999,10 +1017,21 @@ func newUpstreamRequest(ctx context.Context, baseURL string, protocol wire.Proto
 	return req, nil
 }
 
-// clientProjectID renders the project header the way the client does: a bare
-// 40-character lowercase hex id rather than the gateway's "prj_" prefixed
-// stable id. The value itself is not checked upstream, only its shape, but
-// hashing keeps one conversation pinned to one project.
+// legacyProjectID renders the project header in the v1.3.7 canonical
+// "prj_<24hex>" shape expected by the pre-2.x /zen/v1 origin, preserving an
+// already-prefixed prj_* value verbatim.
+func legacyProjectID(project string) string {
+	if strings.HasPrefix(project, "prj_") {
+		return project
+	}
+	return identity.StableID("prj", project)
+}
+
+// clientProjectID renders the project header the way the 2.x CLI does for the
+// /inference gate: a bare 40-character lowercase hex id rather than the
+// gateway's "prj_" prefixed stable id. The value itself is not checked
+// upstream, only its shape, but hashing keeps one conversation pinned to one
+// project.
 func clientProjectID(project string) string {
 	sum := sha256.Sum256([]byte("opencode-project\x00" + project))
 	return hex.EncodeToString(sum[:20])

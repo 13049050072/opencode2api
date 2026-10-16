@@ -78,7 +78,11 @@ function render() {
   const models = allModels.filter((model) => model.id.toLowerCase().includes(query));
   $("#quota-model-count").textContent = `${models.length} / ${allModels.length}`;
   const catalog = data.catalog;
-  $("#quota-catalog-status").textContent = `${catalog?.stale ? "模型目录暂未更新，显示缓存 · " : ""}目录更新时间：${localTime(catalog?.updated_at)}`;
+  const catalogUpdated =
+    catalog?.updated_at && !catalog.updated_at.startsWith("0001-")
+      ? localTime(catalog.updated_at)
+      : "尚未就绪";
+  $("#quota-catalog-status").textContent = `${catalog?.stale ? "模型目录暂未更新，显示缓存 · " : ""}目录更新时间：${catalogUpdated}`;
   const host = $("#quota-models");
   host.replaceChildren();
   for (const model of models) {

@@ -2,18 +2,35 @@
 import { api } from "../api.js";
 import { loadConfig, loadDebugModels } from "../data.js";
 import * as store from "../store.js";
-import { $, bindTabs, el, openDialog, toast } from "../ui.js";
+import { t, onChange } from "../i18n.js";
+import { $, $$, bindTabs, el, openDialog, toast } from "../ui.js";
 
 function renderChips(name) {
   const host = $(`#${name}-chips`);
   host.replaceChildren();
   (store.get("config")?.[name] || []).forEach((item) => {
-    const remove = el("button", { type: "button", title: "移除", text: "×" });
+    const remove = el("button", { type: "button", title: t("移除", "common.remove"), text: "×" });
     const chip = el("span", { class: "chip", dataset: { id: item.id } });
     remove.addEventListener("click", () => chip.remove());
     chip.append(el("span", { text: item.display }), remove);
     host.append(chip);
   });
+}
+
+function renderRestartNotice(value) {
+  const notice = $("#restart-notice");
+  if (value?.restart_required_fields?.length) {
+    notice.textContent = t(
+      `已保存但尚未生效：${value.restart_required_fields.join(", ")}。当前 API ${value.effective.listen}、WebUI ${value.effective.webui_listen}。请重启进程。`,
+      "config.restartNotice",
+      value.restart_required_fields.join(", "),
+      value.effective.listen,
+      value.effective.webui_listen,
+    );
+    notice.classList.remove("hidden");
+  } else {
+    notice.classList.add("hidden");
+  }
 }
 
 function secretInputs(name) {
@@ -59,13 +76,7 @@ function fillConfig(value) {
   $("#c-ring").value = value.logging.ring_size;
   $("#c-dump-bodies").checked = !!value.logging.dump_request_bodies;
   ["server_keys", "zen_keys", "go_keys", "proxies"].forEach(renderChips);
-  const notice = $("#restart-notice");
-  if (value.restart_required_fields?.length) {
-    notice.textContent = `已保存但尚未生效：${value.restart_required_fields.join(", ")}。当前 API ${value.effective.listen}、WebUI ${value.effective.webui_listen}。请重启进程。`;
-    notice.classList.remove("hidden");
-  } else {
-    notice.classList.add("hidden");
-  }
+  renderRestartNotice(value);
 }
 
 async function save(event) {
@@ -123,8 +134,12 @@ async function save(event) {
     await loadDebugModels();
     toast(
       result.result.restart_required
-        ? `已应用；${result.result.restart_fields.join(", ")} 需重启`
-        : "配置已保存并立即应用",
+        ? t(
+            `已应用；${result.result.restart_fields.join(", ")} 需重启`,
+            "toast.config.restart",
+            result.result.restart_fields.join(", "),
+          )
+        : t("配置已保存并立即应用", "toast.config.saved"),
     );
   } catch (error) {
     toast(error.message, true);
@@ -136,7 +151,11 @@ async function reload() {
     const result = await api("/api/config/reload", { method: "POST", body: "{}" });
     await loadConfig();
     await loadDebugModels();
-    toast(result.restart_required ? "磁盘配置已重载，监听字段需重启" : "磁盘配置已重载");
+    toast(
+      result.restart_required
+        ? t("磁盘配置已重载，监听字段需重启", "toast.config.reloadedRestart")
+        : t("磁盘配置已重载", "toast.config.reloaded"),
+    );
   } catch (error) {
     toast(error.message, true);
   }
@@ -152,21 +171,24 @@ function reveal() {
       });
       close();
       openDialog({
-        title: "敏感配置",
+        title: t("敏感配置", "modal.title"),
         size: "dialog-lg",
         body: el("pre", { text: JSON.stringify(values, null, 2) }),
-        actions: [{ label: "关闭" }],
+        actions: [{ label: t("关闭", "modal.close") }],
       });
     } catch (error) {
       toast(error.message, true);
     }
   };
   const dialog = openDialog({
-    title: "查看敏感配置",
-    body: el("div", { class: "field" }, [el("label", { text: "请再次输入管理密码" }), input]),
+    title: t("查看敏感配置", "modal.revealTitle"),
+    body: el("div", { class: "field" }, [
+      el("label", { text: t("请再次输入管理密码", "config.revealPrompt") }),
+      input,
+    ]),
     actions: [
-      { label: "取消" },
-      { label: "查看", kind: "btn-primary", onClick: submit },
+      { label: t("取消", "common.cancel") },
+      { label: t("查看", "common.view"), kind: "btn-primary", onClick: submit },
     ],
   });
   input.addEventListener("keydown", (event) => {
@@ -187,5 +209,11 @@ export default {
     $("#config-form").addEventListener("submit", save);
     $("#reload-config").addEventListener("click", reload);
     $("#reveal").addEventListener("click", reveal);
+    onChange(() => {
+      const value = store.get("config");
+      if (value) renderRestartNotice(value);
+      // Update chip tooltips in place so pending unsaved chip removals survive a language switch.
+      $$(".chips .chip button").forEach((button) => (button.title = t("移除", "common.remove")));
+    });
   },
 };

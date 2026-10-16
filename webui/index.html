@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>opencode2api 控制台</title>
+    <title data-i18n="doc.title">opencode2api 控制台</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230a0a0a'/><circle cx='16' cy='16' r='8' fill='none' stroke='white' stroke-width='3'/><circle cx='16' cy='16' r='2.6' fill='white'/></svg>"
@@ -19,17 +19,18 @@
 
     <section id="login" class="login-view">
       <form id="login-form" class="login-card">
-        <h1 class="login-name">opencode2api 控制台</h1>
+        <div class="login-lang"><select class="lang-switch" data-lang-switch aria-label="语言"></select></div>
+        <h1 class="login-name" data-i18n="login.title">opencode2api 控制台</h1>
         <div class="field">
-          <label for="login-user">账号</label>
+          <label for="login-user" data-i18n="login.username">账号</label>
           <input id="login-user" autocomplete="username" required />
         </div>
         <div class="field">
-          <label for="login-pass">密码</label>
+          <label for="login-pass" data-i18n="login.password">密码</label>
           <input id="login-pass" type="password" autocomplete="current-password" required />
         </div>
         <p id="login-error" class="form-error" role="alert"></p>
-        <button class="btn btn-primary btn-block">登录</button>
+        <button class="btn btn-primary btn-block" data-i18n="login.submit">登录</button>
       </form>
     </section>
 
@@ -40,24 +41,26 @@
         </div>
         <nav class="nav" aria-label="页面导航">
           <div class="nav-group">
-            <div class="nav-group-title">运行</div>
-            <button class="nav-item active" data-page="overview">概览</button>
-            <button class="nav-item" data-page="diagnostics">诊断</button>
+            <div class="nav-group-title" data-i18n="nav.group.runtime">运行</div>
+            <button class="nav-item active" data-page="overview" data-i18n="nav.overview">概览</button>
+            <button class="nav-item" data-page="diagnostics" data-i18n="nav.diagnostics">诊断</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">接入</div>
-            <button class="nav-item" data-page="access">接入指南</button>
-            <button class="nav-item" data-page="api-keys">API Key 管理</button>
+            <div class="nav-group-title" data-i18n="nav.group.integration">接入</div>
+            <button class="nav-item" data-page="access" data-i18n="nav.access">接入指南</button>
+            <button class="nav-item" data-page="api-keys" data-i18n="nav.api-keys">API Key 管理</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">模型</div>
-            <button class="nav-item" data-page="model-quotas">模型与额度</button>
-            <button class="nav-item" data-page="rotation">模型轮转</button>
+            <div class="nav-group-title" data-i18n="nav.group.models">模型</div>
+            <button class="nav-item" data-page="model-quotas" data-i18n="nav.model-quotas">
+              模型与额度
+            </button>
+            <button class="nav-item" data-page="rotation" data-i18n="nav.rotation">模型轮转</button>
           </div>
           <div class="nav-group">
-            <div class="nav-group-title">系统</div>
-            <button class="nav-item" data-page="config">配置中心</button>
-            <button class="nav-item" data-page="account">账号安全</button>
+            <div class="nav-group-title" data-i18n="nav.group.system">系统</div>
+            <button class="nav-item" data-page="config" data-i18n="nav.config">配置中心</button>
+            <button class="nav-item" data-page="account" data-i18n="nav.account">账号安全</button>
           </div>
         </nav>
         <div class="sidebar-foot"><span id="version">版本 —</span></div>
@@ -66,12 +69,13 @@
       <div class="content">
         <header class="topbar">
           <div>
-            <h1 id="page-title" class="page-title">概览</h1>
+            <h1 id="page-title" class="page-title"></h1>
             <p id="page-sub" class="page-sub"></p>
           </div>
           <div class="topbar-actions">
-            <button id="refresh-now" class="btn btn-sm">刷新</button>
-            <button id="logout" class="btn btn-sm btn-ghost">退出</button>
+            <select class="lang-switch" data-lang-switch aria-label="语言"></select>
+            <button id="refresh-now" class="btn btn-sm" data-i18n="topbar.refresh">刷新</button>
+            <button id="logout" class="btn btn-sm btn-ghost" data-i18n="topbar.logout">退出</button>
           </div>
         </header>
 
@@ -80,55 +84,55 @@
 
           <section id="page-overview" class="page">
             <div class="tabs" role="tablist" aria-label="概览视图">
-              <button class="tab active" data-tab="summary" role="tab" aria-selected="true">概览</button>
-              <button class="tab" data-tab="usage" role="tab" aria-selected="false">用量</button>
+              <button class="tab active" data-tab="summary" role="tab" aria-selected="true" data-i18n="overview.tab.summary">概览</button>
+              <button class="tab" data-tab="usage" role="tab" aria-selected="false" data-i18n="overview.tab.usage">用量</button>
             </div>
             <div data-panel="summary" class="stack" role="tabpanel">
               <section id="overview-checklist" class="section hidden">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">上线检查</h2>
-                    <p class="section-caption">状态来自当前配置与实时资源。</p>
+                    <h2 class="section-title" data-i18n="overview.checklist.title">上线检查</h2>
+                    <p class="section-caption" data-i18n="overview.checklist.caption">状态来自当前配置与实时资源。</p>
                   </div>
                 </div>
                 <div id="guide-steps" class="guide"></div>
               </section>
               <div class="metrics">
                 <div class="metric">
-                  <div class="metric-label">近 1 小时请求</div>
+                  <div class="metric-label" data-i18n="overview.requests">近 1 小时请求</div>
                   <div id="m-total" class="metric-value">—</div>
-                  <div class="metric-note">最近 60 分钟</div>
+                  <div class="metric-note" data-i18n="overview.hour">最近 60 分钟</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">成功率</div>
+                  <div class="metric-label" data-i18n="overview.success">成功率</div>
                   <div id="m-rate" class="metric-value">—</div>
-                  <div class="metric-note">HTTP 2xx–3xx</div>
+                  <div class="metric-note" data-i18n="overview.http2xx">HTTP 2xx–3xx</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">P95 延迟</div>
+                  <div class="metric-label" data-i18n="overview.p95">P95 延迟</div>
                   <div id="m-p95" class="metric-value">—</div>
-                  <div class="metric-note">端到端毫秒</div>
+                  <div class="metric-note" data-i18n="overview.endToEnd">端到端毫秒</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">活跃 / 流式</div>
+                  <div class="metric-label" data-i18n="overview.active">活跃 / 流式</div>
                   <div id="m-active" class="metric-value">—</div>
-                  <div class="metric-note">当前并发</div>
+                  <div class="metric-note" data-i18n="overview.concurrent">当前并发</div>
                 </div>
               </div>
               <div class="split">
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">Proxy 节点</h2>
+                      <h2 class="section-title" data-i18n="overview.proxy.title">Proxy 节点</h2>
                     </div>
                   </div>
                   <div class="table-wrap">
                     <table class="table">
                       <thead>
                         <tr>
-                          <th>节点</th>
-                          <th>健康</th>
-                          <th>绑定</th>
+                          <th data-i18n="overview.proxy.col.node">节点</th>
+                          <th data-i18n="overview.proxy.col.health">健康</th>
+                          <th data-i18n="overview.proxy.col.binding">绑定</th>
                         </tr>
                       </thead>
                       <tbody id="proxy-table"></tbody>
@@ -138,16 +142,16 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">Key 池</h2>
+                      <h2 class="section-title" data-i18n="overview.keys.title">Key 池</h2>
                     </div>
                   </div>
                   <div class="table-wrap">
                     <table class="table">
                       <thead>
                         <tr>
-                          <th>Key 尾码</th>
-                          <th>Tier</th>
-                          <th>状态</th>
+                          <th data-i18n="overview.keys.col.tail">Key 尾码</th>
+                          <th data-i18n="overview.keys.col.tier">Tier</th>
+                          <th data-i18n="overview.keys.col.state">状态</th>
                         </tr>
                       </thead>
                       <tbody id="key-table"></tbody>
@@ -158,8 +162,8 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">请求分布</h2>
-                    <p class="section-caption">最近一小时，各取前 10。</p>
+                    <h2 class="section-title" data-i18n="overview.distribution.title">请求分布</h2>
+                    <p class="section-caption" data-i18n="overview.distribution.caption">最近一小时，各取前 10。</p>
                   </div>
                 </div>
                 <div id="breakdowns" class="split"></div>
@@ -168,31 +172,31 @@
             <div data-panel="usage" class="stack hidden" role="tabpanel">
               <div class="metrics">
                 <div class="metric">
-                  <div class="metric-label">用量覆盖率</div>
+                  <div class="metric-label" data-i18n="usage.coverage">用量覆盖率</div>
                   <div id="u-coverage" class="metric-value">—</div>
-                  <div class="metric-note">有 Token 回报 / 推理请求</div>
+                  <div class="metric-note" data-i18n="usage.coverage.note">有 Token 回报 / 推理请求</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">Token 总量</div>
+                  <div class="metric-label" data-i18n="usage.total">Token 总量</div>
                   <div id="u-total" class="metric-value">—</div>
-                  <div class="metric-note">最近 60 分钟</div>
+                  <div class="metric-note" data-i18n="usage.hour">最近 60 分钟</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">缓存 Token</div>
+                  <div class="metric-label" data-i18n="usage.cached">缓存 Token</div>
                   <div id="u-cached" class="metric-value">—</div>
-                  <div class="metric-note">上游回报的缓存命中</div>
+                  <div class="metric-note" data-i18n="usage.cached.note">上游回报的缓存命中</div>
                 </div>
                 <div class="metric">
-                  <div class="metric-label">推理 Token</div>
+                  <div class="metric-label" data-i18n="usage.reasoning">推理 Token</div>
                   <div id="u-reasoning" class="metric-value">—</div>
-                  <div class="metric-note">上游回报的推理用量</div>
+                  <div class="metric-note" data-i18n="usage.reasoning.note">上游回报的推理用量</div>
                 </div>
               </div>
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">每分钟 Token 趋势</h2>
-                    <p class="section-caption">最近 60 分钟；悬停查看输入、输出与总量。</p>
+                    <h2 class="section-title" data-i18n="usage.trend.title">每分钟 Token 趋势</h2>
+                    <p class="section-caption" data-i18n="usage.trend.caption">最近 60 分钟；悬停查看输入、输出与总量。</p>
                   </div>
                 </div>
                 <div id="usage-trend" class="trend"></div>
@@ -202,18 +206,18 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">模型排行</h2>
-                      <p class="section-caption">按总量排序，取前 15。</p>
+                      <h2 class="section-title" data-i18n="usage.models.title">模型排行</h2>
+                      <p class="section-caption" data-i18n="usage.models.caption">按总量排序，取前 15。</p>
                     </div>
                   </div>
                   <div class="table-wrap">
                     <table class="table">
                       <thead>
                         <tr>
-                          <th>模型</th>
-                          <th class="num">输入</th>
-                          <th class="num">输出</th>
-                          <th class="num">总量</th>
+                          <th data-i18n="usage.models.col.model">模型</th>
+                          <th class="num" data-i18n="usage.models.col.input">输入</th>
+                          <th class="num" data-i18n="usage.models.col.output">输出</th>
+                          <th class="num" data-i18n="usage.models.col.total">总量</th>
                         </tr>
                       </thead>
                       <tbody id="usage-models"></tbody>
@@ -223,8 +227,8 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">Tier 分布</h2>
-                      <p class="section-caption">Zen / Go 的 Token 去向。</p>
+                      <h2 class="section-title" data-i18n="usage.tiers.title">Tier 分布</h2>
+                      <p class="section-caption" data-i18n="usage.tiers.caption">Zen / Go 的 Token 去向。</p>
                     </div>
                   </div>
                   <div id="usage-tiers"></div>
@@ -235,23 +239,23 @@
 
           <section id="page-diagnostics" class="page hidden">
             <div class="tabs" role="tablist" aria-label="诊断视图">
-              <button class="tab active" data-tab="playground" role="tab" aria-selected="true">请求测试</button>
-              <button class="tab" data-tab="ledger" role="tab" aria-selected="false">请求流水</button>
-              <button class="tab" data-tab="logs" role="tab" aria-selected="false">事件流</button>
-              <button class="tab" data-tab="route" role="tab" aria-selected="false">路由与资格</button>
+              <button class="tab active" data-tab="playground" role="tab" aria-selected="true" data-i18n="diagnostics.tab.playground">请求测试</button>
+              <button class="tab" data-tab="ledger" role="tab" aria-selected="false" data-i18n="diagnostics.tab.ledger">请求流水</button>
+              <button class="tab" data-tab="logs" role="tab" aria-selected="false" data-i18n="diagnostics.tab.logs">事件流</button>
+              <button class="tab" data-tab="route" role="tab" aria-selected="false" data-i18n="diagnostics.tab.route">路由与资格</button>
             </div>
             <div data-panel="playground" class="stack" role="tabpanel">
               <div class="play-layout">
                 <form id="play-form" class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">三协议请求台</h2>
-                      <p class="section-caption">服务端强制非流式，并经由真实 Gateway 路由。</p>
+                      <h2 class="section-title" data-i18n="playground.title">三协议请求台</h2>
+                      <p class="section-caption" data-i18n="playground.caption">服务端强制非流式，并经由真实 Gateway 路由。</p>
                     </div>
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="play-protocol">入口协议</label>
+                      <label for="play-protocol" data-i18n="playground.protocol">入口协议</label>
                       <select id="play-protocol">
                         <option value="chat">Chat Completions</option>
                         <option value="responses">Responses</option>
@@ -259,38 +263,50 @@
                       </select>
                     </div>
                     <div class="field">
-                      <label for="play-model">模型</label>
+                      <label for="play-model" data-i18n="playground.model">模型</label>
                       <select id="play-model"></select>
                     </div>
                     <div class="field full">
-                      <label for="play-key">上游 Key</label>
+                      <label for="play-key" data-i18n="playground.key">上游 Key</label>
                       <select id="play-key">
-                        <option value="auto">自动路由（匿名 / Tier 回退 / Key 轮询）</option>
+                        <option value="auto" data-i18n="playground.key.auto">
+                          自动路由（匿名 / Tier 回退 / Key 轮询）
+                        </option>
                       </select>
-                      <p class="section-caption">指定 Key 后只测试该 Key：不切换、不回退，也不改变冷却与代理健康。</p>
+                      <p class="section-caption" data-i18n="playground.key.caption">
+                        指定 Key 后只测试该 Key：不切换、不回退，也不改变冷却与代理健康。
+                      </p>
                     </div>
                   </div>
                   <div class="field">
-                    <label for="play-request">请求 JSON</label>
+                    <label for="play-request" data-i18n="playground.request">请求 JSON</label>
                     <textarea id="play-request" class="json-editor" spellcheck="false"></textarea>
                   </div>
                   <div class="actions">
-                    <button id="play-reset" type="button" class="btn btn-sm btn-ghost">重置模板</button>
-                    <button id="play-run" class="btn btn-sm btn-primary">发送诊断请求</button>
+                    <button id="play-reset" type="button" class="btn btn-sm btn-ghost" data-i18n="playground.reset">
+                      重置模板
+                    </button>
+                    <button id="play-run" class="btn btn-sm btn-primary" data-i18n="playground.run">
+                      发送诊断请求
+                    </button>
                   </div>
                 </form>
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">诊断结果</h2>
-                      <p id="play-state" class="section-caption">尚未发送请求。</p>
+                      <h2 class="section-title" data-i18n="playground.result.title">诊断结果</h2>
+                      <p id="play-state" class="section-caption" data-i18n="playground.result.idle">
+                        尚未发送请求。
+                      </p>
                     </div>
                   </div>
                   <div id="play-facts" class="facts"></div>
                   <div class="code-card">
                     <div class="code-head">
-                      <span>原始响应</span>
-                      <button id="play-copy" type="button" class="btn btn-sm btn-ghost">复制</button>
+                      <span data-i18n="playground.output">原始响应</span>
+                      <button id="play-copy" type="button" class="btn btn-sm btn-ghost" data-i18n="common.copy">
+                        复制
+                      </button>
                     </div>
                     <pre id="play-output">{}</pre>
                   </div>
@@ -301,23 +317,23 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">请求路由</h2>
-                    <p class="section-caption">最多展示最近 100 条。</p>
+                    <h2 class="section-title" data-i18n="diagnostics.requests.title">请求路由</h2>
+                    <p class="section-caption" data-i18n="diagnostics.requests.caption">最多展示最近 100 条。</p>
                   </div>
                 </div>
                 <div class="table-wrap">
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>时间</th>
+                        <th data-i18n="diagnostics.col.time">时间</th>
                         <th>Request ID</th>
-                        <th>模型</th>
-                        <th>Tier</th>
-                        <th>通道</th>
-                        <th>Key 尾码</th>
-                        <th class="num">尝试</th>
-                        <th>状态</th>
-                        <th class="num">耗时</th>
+                        <th data-i18n="diagnostics.col.model">模型</th>
+                        <th data-i18n="diagnostics.col.tier">Tier</th>
+                        <th data-i18n="diagnostics.col.channel">通道</th>
+                        <th data-i18n="diagnostics.col.tail">Key 尾码</th>
+                        <th class="num" data-i18n="diagnostics.col.attempts">尝试</th>
+                        <th data-i18n="diagnostics.col.state">状态</th>
+                        <th class="num" data-i18n="diagnostics.col.duration">耗时</th>
                       </tr>
                     </thead>
                     <tbody id="upstream-requests"></tbody>
@@ -327,22 +343,22 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">上游尝试</h2>
-                    <p class="section-caption">最多展示最近 100 条。</p>
+                    <h2 class="section-title" data-i18n="diagnostics.attempts.title">上游尝试</h2>
+                    <p class="section-caption" data-i18n="diagnostics.attempts.caption">最多展示最近 100 条。</p>
                   </div>
                 </div>
                 <div class="table-wrap">
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>时间</th>
+                        <th data-i18n="diagnostics.col.time">时间</th>
                         <th>Request ID</th>
-                        <th>模型</th>
-                        <th>通道</th>
-                        <th>Key 尾码</th>
-                        <th>代理节点</th>
-                        <th>状态</th>
-                        <th class="num">耗时</th>
+                        <th data-i18n="diagnostics.col.model">模型</th>
+                        <th data-i18n="diagnostics.col.channel">通道</th>
+                        <th data-i18n="diagnostics.col.tail">Key 尾码</th>
+                        <th data-i18n="diagnostics.col.proxy">代理节点</th>
+                        <th data-i18n="diagnostics.col.state">状态</th>
+                        <th class="num" data-i18n="diagnostics.col.duration">耗时</th>
                       </tr>
                     </thead>
                     <tbody id="upstream-attempts"></tbody>
@@ -353,15 +369,25 @@
             <div data-panel="logs" class="stack hidden" role="tabpanel">
               <div class="filters">
                 <select id="log-level" aria-label="日志级别">
-                  <option value="">全部级别</option>
+                  <option value="" data-i18n="logs.level.all">全部级别</option>
                   <option>debug</option>
                   <option>info</option>
                   <option>warn</option>
                   <option>error</option>
                 </select>
-                <input id="log-component" placeholder="模块" aria-label="模块筛选" />
-                <input id="log-search" placeholder="搜索事件、Request ID、模型" aria-label="全文搜索" />
-                <button id="log-pause" class="btn btn-sm btn-ghost">暂停</button>
+                <input
+                  id="log-component"
+                  placeholder="模块"
+                  aria-label="模块筛选"
+                  data-i18n-attr="placeholder:logs.component,aria-label:logs.component"
+                />
+                <input
+                  id="log-search"
+                  placeholder="搜索事件、Request ID、模型"
+                  aria-label="全文搜索"
+                  data-i18n-attr="placeholder:logs.search,aria-label:logs.search"
+                />
+                <button id="log-pause" class="btn btn-sm btn-ghost" data-i18n="logs.pause">暂停</button>
               </div>
               <div id="log-list" class="logs"></div>
             </div>
@@ -369,8 +395,10 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">模型 Metadata</h2>
-                    <p class="section-caption">models.dev OpenCode 价格缓存状态。</p>
+                    <h2 class="section-title" data-i18n="diagnostics.metadata.title">模型 Metadata</h2>
+                    <p class="section-caption" data-i18n="diagnostics.metadata.caption">
+                      models.dev OpenCode 价格缓存状态。
+                    </p>
                   </div>
                 </div>
                 <div id="metadata-facts" class="facts"></div>
@@ -378,21 +406,28 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">模型路由表</h2>
-                    <p class="section-caption">显式协议、匿名资格来源与成本判断。</p>
+                    <h2 class="section-title" data-i18n="diagnostics.models.title">模型路由表</h2>
+                    <p class="section-caption" data-i18n="diagnostics.models.caption">
+                      显式协议、匿名资格来源与成本判断。
+                    </p>
                   </div>
-                  <input id="diagnostic-model-search" class="head-search" placeholder="筛选模型" />
+                  <input
+                    id="diagnostic-model-search"
+                    class="head-search"
+                    placeholder="筛选模型"
+                    data-i18n-attr="placeholder:diagnostics.models.filter"
+                  />
                 </div>
                 <div class="table-wrap">
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>模型</th>
-                        <th>原生协议</th>
-                        <th>路由</th>
-                        <th>匿名资格</th>
-                        <th>判断来源</th>
-                        <th class="num">成本 input / output</th>
+                        <th data-i18n="diagnostics.models.col.model">模型</th>
+                        <th data-i18n="diagnostics.models.col.protocol">原生协议</th>
+                        <th data-i18n="diagnostics.models.col.route">路由</th>
+                        <th data-i18n="diagnostics.models.col.eligibility">匿名资格</th>
+                        <th data-i18n="diagnostics.models.col.source">判断来源</th>
+                        <th class="num" data-i18n="diagnostics.models.col.cost">成本 input / output</th>
                       </tr>
                     </thead>
                     <tbody id="diagnostic-models"></tbody>
@@ -406,33 +441,39 @@
             <section class="section">
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">基础地址</h2>
-                  <p class="section-caption">示例不会写入真实 Server Key。</p>
+                  <h2 class="section-title" data-i18n="access.base.title">基础地址</h2>
+                  <p class="section-caption" data-i18n="access.base.caption">示例不会写入真实 Server Key。</p>
                 </div>
               </div>
               <div class="field">
-                <label for="access-base-value">推导的 API Base</label>
+                <label for="access-base-value" data-i18n="access.base.label">推导的 API Base</label>
                 <input id="access-base-value" readonly />
               </div>
               <div class="field">
-                <label for="access-model">示例模型</label>
+                <label for="access-model" data-i18n="access.model.label">示例模型</label>
                 <input id="access-model" value="YOUR_MODEL" />
               </div>
             </section>
             <section class="section">
-              <h2 class="section-title">三种协议入口</h2>
+              <h2 class="section-title" data-i18n="access.protocols.title">三种协议入口</h2>
               <div id="access-protocol-examples"></div>
             </section>
             <section class="section">
-              <h2 class="section-title">Python 与 JavaScript</h2>
+              <h2 class="section-title" data-i18n="access.sdk.title">Python 与 JavaScript</h2>
               <div id="access-sdk-examples"></div>
             </section>
             <section class="section">
-              <h2 class="section-title">接入注意</h2>
+              <h2 class="section-title" data-i18n="access.notes.title">接入注意</h2>
               <ul class="section-caption">
-                <li>OpenAI 兼容客户端使用 <code>Authorization: Bearer YOUR_API_KEY</code>。</li>
-                <li>Anthropic 客户端可使用 <code>x-api-key</code>，路径为 <code>/v1/messages</code>。</li>
-                <li>流式请求会保持原协议事件；跨协议时由 Gateway 转换。</li>
+                <li data-i18n="access.notes.auth">
+                  OpenAI 兼容客户端使用 <code>Authorization: Bearer YOUR_API_KEY</code>。
+                </li>
+                <li data-i18n="access.notes.anthropic">
+                  Anthropic 客户端可使用 <code>x-api-key</code>，路径为 <code>/v1/messages</code>。
+                </li>
+                <li data-i18n="access.notes.stream">
+                  流式请求会保持原协议事件；跨协议时由 Gateway 转换。
+                </li>
               </ul>
             </section>
           </section>
@@ -456,10 +497,11 @@
                       placeholder="例如：我的笔记助手"
                       maxlength="80"
                       required
+                      data-i18n-attr="placeholder:apikeys.create.namePlaceholder"
                     />
                   </div>
                   <div class="field">
-                    <label for="api-key-value">自定义 Key（可选）</label>
+                    <label for="api-key-value" data-i18n="apikeys.create.value">自定义 Key（可选）</label>
                     <input
                       id="api-key-value"
                       type="password"
@@ -467,59 +509,71 @@
                       minlength="16"
                       maxlength="256"
                       placeholder="留空自动生成；自定义需 16–256 位"
+                      data-i18n-attr="placeholder:apikeys.create.valuePlaceholder"
                     />
                   </div>
                 </div>
                 <div class="actions">
-                  <button id="api-key-create" class="btn btn-sm btn-primary">创建 API Key</button>
+                  <button id="api-key-create" class="btn btn-sm btn-primary" data-i18n="apikeys.create.submit">
+                    创建 API Key
+                  </button>
                 </div>
               </form>
             </section>
             <section id="api-key-created" class="section hidden" role="status">
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">密钥已创建</h2>
-                  <p class="section-caption">
+                  <h2 class="section-title" data-i18n="apikeys.created.title">密钥已创建</h2>
+                  <p class="section-caption" data-i18n="apikeys.created.caption">
                     完整密钥仅在创建后展示，请现在保存到调用方的环境变量。
                   </p>
                 </div>
-                <button id="api-key-dismiss" class="btn btn-sm btn-ghost">已保存，关闭</button>
+                <button id="api-key-dismiss" class="btn btn-sm btn-ghost" data-i18n="apikeys.created.dismiss">
+                  已保存，关闭
+                </button>
               </div>
               <pre id="api-key-env" class="key-env"></pre>
               <div class="actions">
-                <button id="api-key-copy" class="btn btn-sm btn-ghost">复制 Key</button>
-                <button id="api-key-copy-env" class="btn btn-sm btn-primary">复制环境变量</button>
+                <button id="api-key-copy" class="btn btn-sm btn-ghost" data-i18n="apikeys.created.copy">
+                  复制 Key
+                </button>
+                <button id="api-key-copy-env" class="btn btn-sm btn-primary" data-i18n="apikeys.created.copyEnv">
+                  复制环境变量
+                </button>
               </div>
             </section>
             <section class="section">
               <div class="section-head">
                 <div>
                   <h2 class="section-title">
-                    访问密钥 <span id="api-key-count" class="section-caption"></span>
+                    <span data-i18n="apikeys.list.title">访问密钥</span>
+                    <span id="api-key-count" class="section-caption"></span>
                   </h2>
-                  <p class="section-caption">
+                  <p class="section-caption" data-i18n="apikeys.list.caption">
                     此处管理 Gateway 的调用方访问权限；OpenCode 上游密钥在配置中心管理。
                   </p>
                 </div>
-                <button id="api-key-refresh" class="btn btn-sm">刷新列表</button>
+                <button id="api-key-refresh" class="btn btn-sm" data-i18n="apikeys.list.refresh">
+                  刷新列表
+                </button>
               </div>
               <p id="api-key-status" class="section-caption" role="status" aria-live="polite"></p>
               <div class="table-wrap">
                 <table class="table">
                   <thead>
                     <tr>
-                      <th>名称</th>
-                      <th>密钥尾码</th>
-                      <th>状态</th>
-                      <th>用量（近 1 小时 / 累计）</th>
-                      <th>创建时间</th>
-                      <th>操作</th>
+                      <th data-i18n="apikeys.col.name">名称</th>
+                      <th data-i18n="apikeys.col.tail">密钥尾码</th>
+                      <th data-i18n="apikeys.col.state">状态</th>
+                      <th data-i18n="apikeys.col.usage">用量（近 1 小时 / 累计）</th>
+                      <th data-i18n="apikeys.col.created">创建时间</th>
+                      <th data-i18n="apikeys.col.action">操作</th>
                     </tr>
                   </thead>
                   <tbody id="api-key-list"></tbody>
                 </table>
               </div>
-              <p class="section-caption">
+              <p class="section-caption" data-i18n="apikeys.note">
                 停用和删除会使对应应用的新请求返回 401。至少保留一个启用的 Key。
               </p>
             </section>
@@ -527,23 +581,29 @@
 
           <section id="page-model-quotas" class="page hidden">
             <div class="tabs" role="tablist" aria-label="模型视图">
-              <button class="tab active" data-tab="quota" role="tab" aria-selected="true">套餐额度</button>
-              <button class="tab" data-tab="free" role="tab" aria-selected="false">免费模型</button>
+              <button class="tab active" data-tab="quota" role="tab" aria-selected="true" data-i18n="quotas.tab.quota">套餐额度</button>
+              <button class="tab" data-tab="free" role="tab" aria-selected="false" data-i18n="quotas.tab.free">免费模型</button>
             </div>
             <div data-panel="quota" class="stack" role="tabpanel">
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">OpenCode Go 套餐额度</h2>
-                    <p class="section-caption">所有模型共享套餐窗口，百分比由上游取整。</p>
+                    <h2 class="section-title" data-i18n="quotas.title">OpenCode Go 套餐额度</h2>
+                    <p class="section-caption" data-i18n="quotas.caption">所有模型共享套餐窗口，百分比由上游取整。</p>
                   </div>
-                  <button id="quota-refresh" class="btn btn-sm">刷新额度</button>
+                  <button id="quota-refresh" class="btn btn-sm" data-i18n="quotas.refresh">刷新额度</button>
                 </div>
                 <div class="field">
                   <label for="quota-account">Go Key</label>
                   <select id="quota-account"></select>
                 </div>
-                <div id="quota-status" class="quota-status" role="status" aria-live="polite">
+                <div
+                  id="quota-status"
+                  class="quota-status"
+                  role="status"
+                  aria-live="polite"
+                  data-i18n="quotas.pending"
+                >
                   进入页面后读取额度。
                 </div>
                 <div id="quota-cards" class="quota-grid"></div>
@@ -553,9 +613,12 @@
                 <div class="section-head">
                   <div>
                     <h2 class="section-title">
-                      可用模型 <span id="quota-model-count" class="section-caption"></span>
+                      <span data-i18n="quotas.catalog.title">可用模型</span>
+                      <span id="quota-model-count" class="section-caption"></span>
                     </h2>
-                    <p class="section-caption">模型名称可直接填入 OPENAI_MODEL；额度列对应上方选定套餐。</p>
+                    <p class="section-caption" data-i18n="quotas.catalog.caption">
+                      模型名称可直接填入 OPENAI_MODEL；额度列对应上方选定套餐。
+                    </p>
                   </div>
                   <input
                     id="quota-model-search"
@@ -563,6 +626,7 @@
                     type="search"
                     aria-label="搜索模型"
                     placeholder="搜索模型名称…"
+                    data-i18n-attr="placeholder:quotas.catalog.search,aria-label:quotas.catalog.search"
                   />
                 </div>
                 <p id="quota-catalog-status" class="section-caption"></p>
@@ -570,12 +634,12 @@
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>模型名称</th>
-                        <th>上游协议</th>
-                        <th class="num">5 小时剩余 · 共享</th>
-                        <th class="num">本周剩余 · 共享</th>
-                        <th class="num">本月剩余 · 共享</th>
-                        <th>操作</th>
+                        <th data-i18n="quotas.col.model">模型名称</th>
+                        <th data-i18n="quotas.col.protocol">上游协议</th>
+                        <th class="num" data-i18n="quotas.col.hour">5 小时剩余 · 共享</th>
+                        <th class="num" data-i18n="quotas.col.week">本周剩余 · 共享</th>
+                        <th class="num" data-i18n="quotas.col.month">本月剩余 · 共享</th>
+                        <th data-i18n="quotas.col.action">操作</th>
                       </tr>
                     </thead>
                     <tbody id="quota-models"></tbody>
@@ -587,26 +651,28 @@
               <section class="section">
                 <div class="section-head">
                   <div>
-                    <h2 class="section-title">免费模型探测</h2>
-                    <p class="section-caption">
+                    <h2 class="section-title" data-i18n="availability.title">免费模型探测</h2>
+                    <p class="section-caption" data-i18n="availability.desc">
                       检查名称含 free 或零价未弃用的模型；仅明确失效才禁用并在 24 小时后复测，临时错误不新增禁用。手动控制的模型保持启用，不自动探测。
                     </p>
                   </div>
-                  <button id="availability-refresh" class="btn btn-sm">刷新状态</button>
+                  <button id="availability-refresh" class="btn btn-sm" data-i18n="availability.refresh">
+                    刷新状态
+                  </button>
                 </div>
                 <p id="availability-error" class="section-caption" role="status"></p>
                 <div class="table-wrap">
                   <table class="table">
                     <thead>
                       <tr>
-                        <th>模型</th>
-                        <th>状态</th>
-                        <th>通道 / 结果</th>
-                        <th>控制</th>
-                        <th>已验证思考档位</th>
-                        <th>上次探测</th>
-                        <th>下次探测</th>
-                        <th>操作</th>
+                        <th data-i18n="availability.col.model">模型</th>
+                        <th data-i18n="availability.col.state">状态</th>
+                        <th data-i18n="availability.col.channel">通道 / 结果</th>
+                        <th data-i18n="availability.col.control">控制</th>
+                        <th data-i18n="availability.col.effort">已验证思考档位</th>
+                        <th data-i18n="availability.col.checked">上次探测</th>
+                        <th data-i18n="availability.col.next">下次探测</th>
+                        <th data-i18n="availability.col.action">操作</th>
                       </tr>
                     </thead>
                     <tbody id="availability-models"></tbody>
@@ -620,14 +686,14 @@
             <section class="section">
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">SOTA / 甜点模型轮转</h2>
-                  <p class="section-caption">
+                  <h2 class="section-title" data-i18n="rotation.title">SOTA / 甜点模型轮转</h2>
+                  <p class="section-caption" data-i18n="rotation.caption">
                     成功后继续使用当前模型；额度不足或错误时按顺序切换，仅使用 OpenCode Go。
                   </p>
                 </div>
-                <button id="rotation-refresh" class="btn btn-sm">刷新状态</button>
+                <button id="rotation-refresh" class="btn btn-sm" data-i18n="rotation.refresh">刷新状态</button>
               </div>
-              <p class="section-caption">
+              <p class="section-caption" data-i18n="rotation.usage">
                 沿用现有 Base URL 和 API Key，将 OPENAI_MODEL 设为下方别名。每个模型普通错误最多尝试 3
                 次，一次请求最多重试 3 个模型；额度不足直接跳过。输出开始后，本次回答固定使用同一模型。
               </p>
@@ -637,31 +703,33 @@
               <div id="rotation-groups"></div>
               <section class="section">
                 <div class="field">
-                  <label for="rotation-timeout">首个有效输出等待上限（秒）</label>
+                  <label for="rotation-timeout" data-i18n="rotation.timeout">首个有效输出等待上限（秒）</label>
                   <input id="rotation-timeout" type="number" min="1" max="300" value="30" required />
                 </div>
                 <div class="actions">
-                  <button id="rotation-save" class="btn btn-sm btn-primary">保存别名与顺序</button>
+                  <button id="rotation-save" class="btn btn-sm btn-primary" data-i18n="rotation.save">
+                    保存别名与顺序
+                  </button>
                 </div>
-                <p class="section-caption">
+                <p class="section-caption" data-i18n="rotation.saveNote">
                   保存立即生效；调整顺序不会打断正在输出的回答。手动选择当前模型会立即生效，并解除该模型的临时暂停。
                 </p>
               </section>
             </form>
             <section class="section">
               <div class="section-head">
-                <h2 class="section-title">最近请求尝试</h2>
+                <h2 class="section-title" data-i18n="rotation.attempts.title">最近请求尝试</h2>
               </div>
               <div class="table-wrap">
                 <table class="table">
                   <thead>
                     <tr>
-                      <th>时间</th>
-                      <th>请求</th>
-                      <th>别名</th>
-                      <th>实际模型</th>
-                      <th class="num">尝试</th>
-                      <th>结果</th>
+                      <th data-i18n="rotation.col.time">时间</th>
+                      <th data-i18n="rotation.col.request">请求</th>
+                      <th data-i18n="rotation.col.alias">别名</th>
+                      <th data-i18n="rotation.col.model">实际模型</th>
+                      <th class="num" data-i18n="rotation.col.attempt">尝试</th>
+                      <th data-i18n="rotation.col.result">结果</th>
                     </tr>
                   </thead>
                   <tbody id="rotation-attempts"></tbody>
@@ -673,20 +741,20 @@
           <section id="page-config" class="page hidden">
             <form id="config-form" class="stack">
               <div class="tabs" role="tablist" aria-label="配置分区">
-                <button class="tab active" data-tab="service" role="tab" aria-selected="true">服务</button>
-                <button class="tab" data-tab="keys" role="tab" aria-selected="false">密钥与匿名</button>
-                <button class="tab" data-tab="proxies" role="tab" aria-selected="false">代理</button>
-                <button class="tab" data-tab="upstream" role="tab" aria-selected="false">上游与模型</button>
-                <button class="tab" data-tab="reasoning" role="tab" aria-selected="false">推理与性能</button>
-                <button class="tab" data-tab="logging" role="tab" aria-selected="false">日志</button>
+                <button class="tab active" data-tab="service" role="tab" aria-selected="true" data-i18n="config.tab.service">服务</button>
+                <button class="tab" data-tab="keys" role="tab" aria-selected="false" data-i18n="config.tab.keys">密钥与匿名</button>
+                <button class="tab" data-tab="proxies" role="tab" aria-selected="false" data-i18n="config.tab.proxies">代理</button>
+                <button class="tab" data-tab="upstream" role="tab" aria-selected="false" data-i18n="config.tab.upstream">上游与模型</button>
+                <button class="tab" data-tab="reasoning" role="tab" aria-selected="false" data-i18n="config.tab.reasoning">推理与性能</button>
+                <button class="tab" data-tab="logging" role="tab" aria-selected="false" data-i18n="config.tab.logging">日志</button>
               </div>
 
               <div data-panel="service" class="stack" role="tabpanel">
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">服务</h2>
-                      <p class="section-caption">监听地址变更保存后需要重启进程。</p>
+                      <h2 class="section-title" data-i18n="config.server.title">服务</h2>
+                      <p class="section-caption" data-i18n="config.server.caption">监听地址变更保存后需要重启进程。</p>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -699,13 +767,13 @@
                       <input id="c-web-listen" />
                     </div>
                     <div class="field">
-                      <label for="c-session">Session TTL（分钟）</label>
+                      <label for="c-session" data-i18n="config.server.session">Session TTL（分钟）</label>
                       <input id="c-session" type="number" />
                     </div>
                     <div class="field full">
                       <label class="check">
                         <input id="c-web-enabled" type="checkbox" />
-                        启用 WebUI（修改需重启）
+                        <span data-i18n="config.server.enabled">启用 WebUI（修改需重启）</span>
                       </label>
                     </div>
                   </div>
@@ -716,32 +784,48 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">密钥与匿名</h2>
-                      <p class="section-caption">敏感值默认仅显示掩码；移除后保存才会生效。</p>
+                      <h2 class="section-title" data-i18n="config.secrets.title">密钥与匿名</h2>
+                      <p class="section-caption" data-i18n="config.secrets.caption">
+                        敏感值默认仅显示掩码；移除后保存才会生效。
+                      </p>
                     </div>
-                    <button id="reveal" type="button" class="btn btn-sm">二次验证查看</button>
+                    <button id="reveal" type="button" class="btn btn-sm" data-i18n="config.secrets.reveal">
+                      二次验证查看
+                    </button>
                   </div>
                   <div class="form-grid">
                     <div class="field full">
                       <label class="check">
                         <input id="c-anonymous" type="checkbox" />
-                        启用 Zen 匿名通道
+                        <span data-i18n="config.secrets.anonymous">启用 Zen 匿名通道</span>
                       </label>
                     </div>
                     <div class="field full">
                       <label for="server_keys-new">Server Keys</label>
                       <div id="server_keys-chips" class="chips"></div>
-                      <textarea id="server_keys-new" placeholder="每行新增一个 key"></textarea>
+                      <textarea
+                        id="server_keys-new"
+                        placeholder="每行新增一个 key"
+                        data-i18n-attr="placeholder:config.secrets.add"
+                      ></textarea>
                     </div>
                     <div class="field">
                       <label for="zen_keys-new">Zen Keys</label>
                       <div id="zen_keys-chips" class="chips"></div>
-                      <textarea id="zen_keys-new" placeholder="每行新增一个 key"></textarea>
+                      <textarea
+                        id="zen_keys-new"
+                        placeholder="每行新增一个 key"
+                        data-i18n-attr="placeholder:config.secrets.add"
+                      ></textarea>
                     </div>
                     <div class="field">
                       <label for="go_keys-new">Go Keys</label>
                       <div id="go_keys-chips" class="chips"></div>
-                      <textarea id="go_keys-new" placeholder="每行新增一个 key"></textarea>
+                      <textarea
+                        id="go_keys-new"
+                        placeholder="每行新增一个 key"
+                        data-i18n-attr="placeholder:config.secrets.add"
+                      ></textarea>
                     </div>
                   </div>
                 </section>
@@ -751,13 +835,13 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">Proxy 节点</h2>
+                      <h2 class="section-title" data-i18n="config.proxy.title">Proxy 节点</h2>
                     </div>
                   </div>
                   <div id="proxies-chips" class="chips"></div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="proxies-new">新增 Proxy（每行一个）</label>
+                      <label for="proxies-new" data-i18n="config.proxy.add">新增 Proxy（每行一个）</label>
                       <textarea
                         id="proxies-new"
                         placeholder="direct&#10;http://user:pass@host:port"
@@ -775,18 +859,18 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">上游与模型</h2>
-                      <p class="section-caption">
+                      <h2 class="section-title" data-i18n="config.upstream.title">上游与模型</h2>
+                      <p class="section-caption" data-i18n="config.upstream.caption">
                         anonymous 会耗尽可用 Proxy；显式 protocol 映射优先于模型名称推断。
                       </p>
                     </div>
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="c-prefer">认证 Key 首选 Tier</label>
+                      <label for="c-prefer" data-i18n="config.server.prefer">认证 Key 首选 Tier</label>
                       <select id="c-prefer">
-                        <option value="go">Go（失败回退 Zen）</option>
-                        <option value="zen">Zen（失败回退 Go）</option>
+                        <option value="go" data-i18n="config.server.prefer.go">Go（失败回退 Zen）</option>
+                        <option value="zen" data-i18n="config.server.prefer.zen">Zen（失败回退 Go）</option>
                       </select>
                     </div>
                     <div class="field">
@@ -798,25 +882,27 @@
                       <input id="c-up-go" />
                     </div>
                     <div class="field">
-                      <label for="c-attempts">每个 Key Tier 最大尝试次数</label>
+                      <label for="c-attempts" data-i18n="config.upstream.attempts">每个 Key Tier 最大尝试次数</label>
                       <input id="c-attempts" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-timeout">请求超时（秒）</label>
+                      <label for="c-timeout" data-i18n="config.upstream.timeout">请求超时（秒）</label>
                       <input id="c-timeout" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-refresh">模型刷新（秒）</label>
+                      <label for="c-refresh" data-i18n="config.upstream.refresh">模型刷新（秒）</label>
                       <input id="c-refresh" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-protocols">模型协议覆盖（JSON）</label>
+                      <label for="c-protocols" data-i18n="config.upstream.protocols">模型协议覆盖（JSON）</label>
                       <textarea id="c-protocols" spellcheck="false">{}</textarea>
                     </div>
                     <div class="field full">
                       <label class="check">
                         <input id="c-free-only" type="checkbox" />
-                        仅暴露免费模型（即使配置了 Zen / Go Key）
+                        <span data-i18n="config.upstream.freeOnly">
+                          仅暴露免费模型（即使配置了 Zen / Go Key）
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -827,8 +913,8 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">Thinking 强度</h2>
-                      <p class="section-caption">
+                      <h2 class="section-title" data-i18n="config.reasoning.title">Thinking 强度</h2>
+                      <p class="section-caption" data-i18n="config.reasoning.caption">
                         仅在客户端没有明确指定时生效；按模型覆盖默认值。选择"关闭"会移除未明确请求的
                         reasoning。
                       </p>
@@ -836,27 +922,29 @@
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="c-reasoning-effort">默认强度</label>
+                      <label for="c-reasoning-effort" data-i18n="config.reasoning.default">默认强度</label>
                       <select id="c-reasoning-effort">
-                        <option value="">跟随客户端</option>
-                        <option value="auto">auto（探测最高可用档）</option>
+                        <option value="" data-i18n="config.reasoning.follow">跟随客户端</option>
+                        <option value="auto" data-i18n="config.reasoning.auto">auto（探测最高可用档）</option>
                         <option value="minimal">minimal</option>
                         <option value="low">low</option>
                         <option value="medium">medium</option>
                         <option value="high">high</option>
                         <option value="xhigh">xhigh</option>
                         <option value="max">max</option>
-                        <option value="none">关闭</option>
+                        <option value="none" data-i18n="config.reasoning.none">关闭</option>
                       </select>
                     </div>
                     <div class="field full">
-                      <label for="c-reasoning-by-model">按模型覆盖（JSON）</label>
+                      <label for="c-reasoning-by-model" data-i18n="config.reasoning.byModel">
+                        按模型覆盖（JSON）
+                      </label>
                       <textarea
                         id="c-reasoning-by-model"
                         spellcheck="false"
                         placeholder='{"model-id":"high"}'
                       ></textarea>
-                      <p class="section-caption">
+                      <p class="section-caption" data-i18n="config.reasoning.byModelNote">
                         值可为 minimal、low、medium、high、xhigh、max 或 none；空对象表示不覆盖。
                       </p>
                     </div>
@@ -865,8 +953,8 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">连接与超时</h2>
-                      <p class="section-caption">热重载会保留进程内监控累计。</p>
+                      <h2 class="section-title" data-i18n="config.performance.title">连接与超时</h2>
+                      <p class="section-caption" data-i18n="config.performance.caption">热重载会保留进程内监控累计。</p>
                     </div>
                   </div>
                   <div class="form-grid">
@@ -883,28 +971,33 @@
                       <input id="c-max-host" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-idle-timeout">Idle Timeout（秒）</label>
+                      <label for="c-idle-timeout" data-i18n="config.performance.idleTimeout">Idle Timeout（秒）</label>
                       <input id="c-idle-timeout" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-connect">Connect Timeout（秒）</label>
+                      <label for="c-connect" data-i18n="config.performance.connect">Connect Timeout（秒）</label>
                       <input id="c-connect" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-cooldown">Failure Cooldown（秒）</label>
+                      <label for="c-cooldown" data-i18n="config.performance.cooldown">Failure Cooldown（秒）</label>
                       <input id="c-cooldown" type="number" />
                     </div>
                     <div class="field">
-                      <label for="c-attempt-timeout">Attempt Timeout（秒）</label>
+                      <label for="c-attempt-timeout" data-i18n="config.performance.attemptTimeout">
+                        Attempt Timeout（秒）
+                      </label>
                       <input
                         id="c-attempt-timeout"
                         type="number"
                         min="0"
                         placeholder="0 = 跟随请求超时"
+                        data-i18n-attr="placeholder:config.performance.attemptTimeoutHint"
                       />
                     </div>
                     <div class="field">
-                      <label for="c-first-event-timeout">首个 SSE 事件超时（秒，0 关闭）</label>
+                      <label for="c-first-event-timeout" data-i18n="config.performance.firstEvent">
+                        首个 SSE 事件超时（秒，0 关闭）
+                      </label>
                       <input id="c-first-event-timeout" type="number" min="0" max="86400" />
                     </div>
                   </div>
@@ -915,12 +1008,12 @@
                 <section class="section">
                   <div class="section-head">
                     <div>
-                      <h2 class="section-title">日志</h2>
+                      <h2 class="section-title" data-i18n="config.performance.level">日志</h2>
                     </div>
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="c-level">日志级别</label>
+                      <label for="c-level" data-i18n="config.performance.level">日志级别</label>
                       <select id="c-level">
                         <option>debug</option>
                         <option>info</option>
@@ -929,13 +1022,15 @@
                       </select>
                     </div>
                     <div class="field">
-                      <label for="c-ring">日志 Ring Size</label>
+                      <label for="c-ring" data-i18n="config.performance.ring">日志 Ring Size</label>
                       <input id="c-ring" type="number" />
                     </div>
                     <div class="field full">
                       <label class="check">
                         <input id="c-dump-bodies" type="checkbox" />
-                        转储出站请求体（已脱敏，仅用于排查重试与转换问题）
+                        <span data-i18n="config.performance.dump">
+                          转储出站请求体（已脱敏，仅用于排查重试与转换问题）
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -943,8 +1038,10 @@
               </div>
 
               <div class="sticky-actions">
-                <button id="reload-config" type="button" class="btn btn-sm btn-ghost">从磁盘重载</button>
-                <button class="btn btn-sm btn-primary">验证、保存并应用</button>
+                <button id="reload-config" type="button" class="btn btn-sm btn-ghost" data-i18n="config.reload">
+                  从磁盘重载
+                </button>
+                <button class="btn btn-sm btn-primary" data-i18n="config.save">验证、保存并应用</button>
               </div>
             </form>
           </section>
@@ -953,24 +1050,24 @@
             <form id="account-form" class="section">
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">更新管理账号</h2>
-                  <p class="section-caption">成功后撤销全部会话，并要求重新登录。</p>
+                  <h2 class="section-title" data-i18n="account.title">更新管理账号</h2>
+                  <p class="section-caption" data-i18n="account.caption">成功后撤销全部会话，并要求重新登录。</p>
                 </div>
               </div>
               <div class="field">
-                <label for="a-user">新账号（留空保持）</label>
+                <label for="a-user" data-i18n="account.user">新账号（留空保持）</label>
                 <input id="a-user" autocomplete="username" />
               </div>
               <div class="field">
-                <label for="a-current">当前密码</label>
+                <label for="a-current" data-i18n="account.current">当前密码</label>
                 <input id="a-current" type="password" autocomplete="current-password" required />
               </div>
               <div class="field">
-                <label for="a-new">新密码（留空保持，至少 10 字符）</label>
+                <label for="a-new" data-i18n="account.new">新密码（留空保持，至少 10 字符）</label>
                 <input id="a-new" type="password" autocomplete="new-password" />
               </div>
               <div class="actions">
-                <button class="btn btn-sm btn-primary">更新并重新登录</button>
+                <button class="btn btn-sm btn-primary" data-i18n="account.submit">更新并重新登录</button>
               </div>
             </form>
           </section>

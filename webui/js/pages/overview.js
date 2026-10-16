@@ -1,6 +1,7 @@
 // Page: 概览 — readiness checklist, metrics, resources and token usage.
 import * as store from "../store.js";
 import { $, bindTabs, el, emptyRow, formatNumber, timeOnly } from "../ui.js";
+import { t, onChange } from "../i18n.js";
 
 function renderChecklist() {
   const config = store.get("config");
@@ -9,17 +10,33 @@ function renderChecklist() {
   const resources = monitor.resources;
   const models = resources.models || {};
   const modelDescription = models.stale
-    ? "目录来自" + (models.cache_source || "磁盘") + "快取，等待后台刷新。"
-    : "上游目录已完成首次刷新且有可暴露模型。";
+    ? t(
+        `目录来自${models.cache_source || "磁盘"}快取，等待后台刷新。`,
+        "guide.models.cached",
+        models.cache_source || "磁盘",
+      )
+    : t("上游目录已完成首次刷新且有可暴露模型。", "guide.models.ready");
   const checks = [
-    ["配置本地 Key", "客户端使用 Server Key 访问 Gateway。", (config.server_keys || []).length > 0],
     [
-      "选择上游通道",
-      "至少有 Zen / Go Key，或启用匿名通道。",
+      t("配置本地 Key", "guide.step.serverkey"),
+      t("客户端使用 Server Key 访问 Gateway。", "guide.step.serverkey.desc"),
+      (config.server_keys || []).length > 0,
+    ],
+    [
+      t("选择上游通道", "guide.step.upstream"),
+      t("至少有 Zen / Go Key，或启用匿名通道。", "guide.step.upstream.desc"),
       (config.zen_keys || []).length + (config.go_keys || []).length > 0 || config.anonymous,
     ],
-    ["检查 Proxy", "至少一个代理节点健康。", (resources.proxies || []).some((proxy) => proxy.healthy)],
-    ["等待模型目录", modelDescription, models.exposed > 0 && !!models.updated_at],
+    [
+      t("检查 Proxy", "guide.step.proxy"),
+      t("至少一个代理节点健康。", "guide.step.proxy.desc"),
+      (resources.proxies || []).some((proxy) => proxy.healthy),
+    ],
+    [
+      t("等待模型目录", "guide.step.models"),
+      modelDescription,
+      models.exposed > 0 && !!models.updated_at,
+    ],
   ];
   const card = $("#overview-checklist");
   const ready = checks.every(([, , done]) => done);
@@ -32,7 +49,10 @@ function renderChecklist() {
       el("article", { class: "guide-step" }, [
         el("h3", { text: title }),
         el("p", { text: description }),
-        el("div", { class: `step-state ${done ? "ok" : "warn"}`, text: done ? "✓ 已就绪" : "○ 待处理" }),
+        el("div", {
+          class: `step-state ${done ? "ok" : "warn"}`,
+          text: done ? t("✓ 已就绪", "guide.done") : t("○ 待处理", "guide.todo"),
+        }),
       ]),
     );
   });
@@ -47,10 +67,12 @@ function renderResources(resources) {
         el("td", { text: proxy.address }),
         el("td", {
           class: `status ${proxy.healthy ? "ok" : "bad"}`,
-          text: proxy.healthy ? "正常" : "不可用",
+          text: proxy.healthy ? t("正常", "state.healthy") : t("不可用", "state.unavailable"),
         }),
         el("td", {
-          text: `Z ${proxy.zen_keys} · G ${proxy.go_keys} · A ${proxy.anonymous ? "开" : "关"}`,
+          text: `Z ${proxy.zen_keys} · G ${proxy.go_keys} · A ${
+            proxy.anonymous ? t("开", "common.on") : t("关", "common.off")
+          }`,
         }),
       ]),
     );
@@ -63,7 +85,7 @@ function renderResources(resources) {
       el("tr", {}, [
         el("td", { text: "anonymous" }),
         el("td", { text: "zen" }),
-        el("td", { class: "status ok", text: "已启用" }),
+        el("td", { class: "status ok", text: t("已启用", "state.enabled") }),
       ]),
     );
   }
@@ -74,7 +96,7 @@ function renderResources(resources) {
         el("td", { text: key.tier }),
         el("td", {
           class: `status ${key.cooldown_until ? "warn" : "ok"}`,
-          text: key.cooldown_until ? "冷却中" : "可用",
+          text: key.cooldown_until ? t("冷却中", "state.cooling") : t("可用", "state.available"),
         }),
       ]),
     );
@@ -86,9 +108,9 @@ function renderBreakdowns(metrics) {
   const host = $("#breakdowns");
   host.replaceChildren();
   [
-    ["端点", metrics.endpoints],
-    ["状态码", metrics.statuses],
-    ["模型", metrics.models],
+    [t("端点", "breakdown.endpoint"), metrics.endpoints],
+    [t("状态码", "breakdown.status"), metrics.statuses],
+    [t("模型", "breakdown.model"), metrics.models],
     ["Tier", metrics.tiers],
   ].forEach(([title, data]) => {
     const body = el("tbody");
@@ -98,7 +120,7 @@ function renderBreakdowns(metrics) {
       .forEach(([key, value]) => {
         body.append(el("tr", {}, [el("td", { text: key }), el("td", { class: "num", text: value })]));
       });
-    if (!body.children.length) emptyRow(body, 2, "暂无请求");
+    if (!body.children.length) emptyRow(body, 2, t("暂无请求", "breakdown.empty"));
     host.append(
       el("div", { class: "breakdown" }, [
         el("h3", { text: title }),
@@ -130,8 +152,13 @@ function renderTrend(metrics) {
     trend.append(bar);
   });
   $("#usage-trend-meta").textContent = series.length
-    ? `峰值 ${formatNumber(maximum)} tokens / 分钟 · 近 ${series.length} 分钟`
-    : "尚无趋势数据";
+    ? t(
+        `峰值 ${formatNumber(maximum)} tokens / 分钟 · 近 ${series.length} 分钟`,
+        "usage.trend.peak",
+        formatNumber(maximum),
+        series.length,
+      )
+    : t("尚无趋势数据", "usage.trend.empty");
 }
 
 function renderUsageModels(usage) {
@@ -150,7 +177,7 @@ function renderUsageModels(usage) {
         ]),
       );
     });
-  if (!host.children.length) emptyRow(host, 4, "尚无 Token 用量");
+  if (!host.children.length) emptyRow(host, 4, t("尚无 Token 用量", "usage.empty.models"));
 }
 
 function renderTiers(usage) {
@@ -171,7 +198,7 @@ function renderTiers(usage) {
       ]),
     );
   });
-  if (!entries.length) host.append(el("div", { class: "empty", text: "尚无 Tier 用量" }));
+  if (!entries.length) host.append(el("div", { class: "empty", text: t("尚无 Tier 用量", "usage.empty.tiers") }));
 }
 
 function renderUsage(monitor) {
@@ -202,6 +229,7 @@ export default {
     bindTabs($("#page-overview"));
     store.on("monitor", render);
     store.on("config", renderChecklist);
+    onChange(render);
   },
   show: render,
 };

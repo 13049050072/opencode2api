@@ -2,10 +2,11 @@
 import { derivedAPIBase } from "../api.js";
 import * as store from "../store.js";
 import { $, el, copyText } from "../ui.js";
+import { t, onChange } from "../i18n.js";
 
 function codeCard(label, text) {
-  const copy = el("button", { type: "button", class: "btn btn-sm btn-ghost", text: "复制" });
-  copy.addEventListener("click", () => copyText(text, "示例已复制"));
+  const copy = el("button", { type: "button", class: "btn btn-sm btn-ghost", text: t("复制", "common.copy") });
+  copy.addEventListener("click", () => copyText(text, t("示例已复制", "toast.example.copied")));
   return el("div", { class: "code-card" }, [
     el("div", { class: "code-head" }, [el("span", { text: label }), copy]),
     el("pre", {}, [el("code", { text })]),
@@ -42,6 +43,7 @@ export default {
   init() {
     store.on("config", render);
     $("#access-model").addEventListener("input", render);
+    onChange(render);
   },
   show: render,
 };

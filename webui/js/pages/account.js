@@ -1,5 +1,6 @@
 // Page: 账号安全 — update admin credentials; all sessions are revoked afterwards.
 import { api } from "../api.js";
+import { t } from "../i18n.js";
 import { $, toast } from "../ui.js";
 
 export default {
@@ -18,7 +19,7 @@ export default {
             new_password: $("#a-new").value,
           }),
         });
-        toast("账号已更新，请重新登录");
+        toast(t("账号已更新，请重新登录", "toast.account.updated"));
         setTimeout(() => location.reload(), 800);
       } catch (error) {
         toast(error.message, true);

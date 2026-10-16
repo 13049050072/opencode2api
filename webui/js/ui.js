@@ -1,4 +1,6 @@
 // DOM helpers, formatters, clipboard, toast and in-page dialogs.
+import { t, dateLocale } from "./i18n.js";
+
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -24,11 +26,11 @@ export function el(tag, props = {}, children = []) {
 export const formatNumber = (value) => Number(value || 0).toLocaleString();
 
 export function localTime(value) {
-  return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+  return value ? new Date(value).toLocaleString(dateLocale(), { hour12: false }) : "—";
 }
 
 export function timeOnly(value) {
-  return value ? new Date(value).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
+  return value ? new Date(value).toLocaleTimeString(dateLocale(), { hour12: false }) : "—";
 }
 
 let toastTimer = null;
@@ -42,18 +44,18 @@ export function toast(message, bad = false) {
   toastTimer = setTimeout(() => node.classList.add("hidden"), 3600);
 }
 
-export async function copyText(text, okMessage = "已复制") {
+export async function copyText(text, okMessage = t("已复制", "toast.copied")) {
   try {
     await navigator.clipboard.writeText(text);
     toast(okMessage);
     return true;
   } catch {
-    toast("浏览器不允许剪贴板访问，请手动选中复制", true);
+    toast(t("浏览器不允许剪贴板访问，请手动选中复制", "toast.copyDenied"), true);
     return false;
   }
 }
 
-export function emptyRow(host, columns, message = "暂无数据") {
+export function emptyRow(host, columns, message = t("暂无数据", "common.empty")) {
   host.append(el("tr", {}, [el("td", { class: "empty", colspan: columns, text: message })]));
 }
 
@@ -123,7 +125,12 @@ export function openDialog({ title, body = null, size = "", actions = [], onClos
   return { close, dialog };
 }
 
-export function confirmDialog({ title, message = "", confirmLabel = "确定", danger = false }) {
+export function confirmDialog({
+  title,
+  message = "",
+  confirmLabel = t("确定", "common.confirm"),
+  danger = false,
+}) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value, close) => {
@@ -138,7 +145,7 @@ export function confirmDialog({ title, message = "", confirmLabel = "确定", da
       body: message ? el("p", { class: "dialog-text", text: message }) : null,
       onClose: () => finish(false),
       actions: [
-        { label: "取消", onClick: (close) => finish(false, close) },
+        { label: t("取消", "common.cancel"), onClick: (close) => finish(false, close) },
         {
           label: confirmLabel,
           kind: danger ? "btn-danger" : "btn-primary",
@@ -149,7 +156,13 @@ export function confirmDialog({ title, message = "", confirmLabel = "确定", da
   });
 }
 
-export function promptDialog({ title, label, value = "", placeholder = "", confirmLabel = "确定" }) {
+export function promptDialog({
+  title,
+  label,
+  value = "",
+  placeholder = "",
+  confirmLabel = t("确定", "common.confirm"),
+}) {
   return new Promise((resolve) => {
     let settled = false;
     const input = el("input", { value, placeholder, maxlength: 80 });
@@ -171,7 +184,7 @@ export function promptDialog({ title, label, value = "", placeholder = "", confi
       body: el("div", { class: "field" }, [el("label", { text: label }), input]),
       onClose: () => finish(null),
       actions: [
-        { label: "取消", onClick: (close) => finish(null, close) },
+        { label: t("取消", "common.cancel"), onClick: (close) => finish(null, close) },
         { label: confirmLabel, kind: "btn-primary", onClick: (close) => finish(input.value, close) },
       ],
     });

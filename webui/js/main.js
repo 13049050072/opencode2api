@@ -1,6 +1,7 @@
 // Console shell: boot, login, navigation and shared data loading.
 import { api, setCsrf, clearCsrf, setUnauthorizedHandler } from "./api.js";
 import { refreshMonitor, loadConfig, loadDebugModels } from "./data.js";
+import * as i18n from "./i18n.js";
 import * as store from "./store.js";
 import { $, $$, toast } from "./ui.js";
 import * as logstream from "./logstream.js";
@@ -29,6 +30,12 @@ const HASH_ALIASES = {
 let current = null;
 let monitorTimer = null;
 
+function renderPageHeader(page) {
+  if (!page) return;
+  $("#page-title").textContent = i18n.t(page.title, `page.${page.id}.title`);
+  $("#page-sub").textContent = i18n.t(page.sub, `page.${page.id}.sub`);
+}
+
 function openPage(id) {
   const page = byId.get(id);
   if (!page) return;
@@ -38,8 +45,7 @@ function openPage(id) {
     button.classList.toggle("active", button.dataset.page === id),
   );
   $$(".page").forEach((node) => node.classList.toggle("hidden", node.id !== `page-${id}`));
-  $("#page-title").textContent = page.title;
-  $("#page-sub").textContent = page.sub;
+  renderPageHeader(page);
   current = page;
   page.show?.();
 }
@@ -93,7 +99,7 @@ $$(".nav-item").forEach((button) => {
 $("#refresh-now").addEventListener("click", async () => {
   await Promise.all([refreshMonitor(), loadConfig(), loadDebugModels()]);
   await current?.refresh?.();
-  toast("状态已刷新");
+  toast(i18n.t("状态已刷新", "toast.refreshed"));
 });
 
 $("#logout").addEventListener("click", async () => {
@@ -119,4 +125,11 @@ $("#login-form").addEventListener("submit", async (event) => {
   }
 });
 
+i18n.onChange(() => {
+  renderPageHeader(current);
+  logstream.syncPauseButton();
+  logstream.render();
+});
+
+i18n.init();
 boot();

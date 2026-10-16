@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { loadDebugModels } from "../data.js";
 import * as logstream from "../logstream.js";
 import * as store from "../store.js";
+import { t, dateLocale, onChange } from "../i18n.js";
 import {
   $,
   bindTabs,
@@ -15,27 +16,28 @@ import {
   toast,
 } from "../ui.js";
 
-const keyTestLabels = {
-  usable: "Key 可用",
-  rejected: "Key 被拒绝",
-  rate_limited: "Key 已被接受但受到限流",
-  upstream_error: "上游异常，无法判定 Key",
-  transport_error: "网络或代理异常，无法判定 Key",
-  unavailable: "Key 或运行时不可用",
-  request_error: "请求未成功",
-};
+const keyTestLabels = () => ({
+  usable: t("Key 可用", "play.key.usable"),
+  rejected: t("Key 被拒绝", "play.key.rejected"),
+  rate_limited: t("Key 已被接受但受到限流", "play.key.rateLimited"),
+  upstream_error: t("上游异常，无法判定 Key", "play.key.upstreamError"),
+  transport_error: t("网络或代理异常，无法判定 Key", "play.key.transportError"),
+  unavailable: t("Key 或运行时不可用", "play.key.unavailable"),
+  request_error: t("请求未成功", "play.key.requestError"),
+});
 
 function playgroundTemplate() {
   const protocol = $("#play-protocol").value;
   const model = $("#play-model").value || "YOUR_MODEL";
-  if (protocol === "responses") return { model, input: "用一句话说明这个模型的能力。" };
+  const prompt = t("用一句话说明这个模型的能力。", "playground.samplePrompt");
+  if (protocol === "responses") return { model, input: prompt };
   if (protocol === "anthropic")
     return {
       model,
       max_tokens: 512,
-      messages: [{ role: "user", content: "用一句话说明这个模型的能力。" }],
+      messages: [{ role: "user", content: prompt }],
     };
-  return { model, messages: [{ role: "user", content: "用一句话说明这个模型的能力。" }] };
+  return { model, messages: [{ role: "user", content: prompt }] };
 }
 
 function resetTemplate() {
@@ -46,7 +48,7 @@ function renderKeys() {
   const select = $("#play-key");
   const selected = select.value;
   select.replaceChildren();
-  select.append(el("option", { value: "auto", text: "自动路由（匿名 / Tier 回退 / Key 轮询）" }));
+  select.append(el("option", { value: "auto", text: t("自动路由（匿名 / Tier 回退 / Key 轮询）", "playground.key.auto") }));
   const keys = store.get("debug")?.keys || {};
   for (const [tier, label] of [
     ["zen", "Zen Keys"],
@@ -57,7 +59,11 @@ function renderKeys() {
     const group = el("optgroup", { label });
     for (const item of items) {
       const cooling = item.cooldown_until
-        ? ` · 冷却至 ${new Date(item.cooldown_until).toLocaleTimeString("zh-CN", { hour12: false })}`
+        ? t(
+            ` · 冷却至 ${new Date(item.cooldown_until).toLocaleTimeString(dateLocale(), { hour12: false })}`,
+            "playground.key.cooling",
+            new Date(item.cooldown_until).toLocaleTimeString(dateLocale(), { hour12: false }),
+          )
         : "";
       group.append(
         el("option", {
@@ -85,34 +91,43 @@ function renderModels() {
 }
 
 function showResult(result) {
-  const keyTest = result.key_test ? keyTestLabels[result.key_test] || result.key_test : "";
+  const keyTest = result.key_test ? keyTestLabels()[result.key_test] || result.key_test : "";
   const state = $("#play-state");
   state.textContent = result.ok
-    ? `请求成功 · HTTP ${result.http_status}`
-    : `请求失败 · HTTP ${result.http_status}`;
+    ? t(`请求成功 · HTTP ${result.http_status}`, "play.state.ok", result.http_status)
+    : t(`请求失败 · HTTP ${result.http_status}`, "play.state.failed", result.http_status);
   state.className = `section-caption ${result.ok ? "ok" : "bad"}`;
   const route = result.route || {};
   const eligibility = route.anonymous_eligibility || {};
   const selected = result.selected_key;
   const routeLabel = route.tier
     ? `${route.tier} / ${route.anonymous ? "anonymous" : route.key_id || "key"}`
-    : "未路由";
+    : t("未路由", "play.route.none");
   renderFacts($("#play-facts"), [
-    ["HTTP 状态", result.http_status, result.ok ? "ok" : "bad"],
-    ["耗时", `${result.duration_ms} ms`],
+    [t("HTTP 状态", "play.httpStatus"), result.http_status, result.ok ? "ok" : "bad"],
+    [t("耗时", "common.duration"), `${result.duration_ms} ms`],
     ["Request ID", result.request_id || "—"],
-    ["测试模式", selected ? `指定 ${selected.tier.toUpperCase()} Key` : "自动路由"],
-    ["测试 Key", selected ? `${selected.display} · ${selected.id}` : "—"],
     [
-      "Key 判断",
-      keyTest || "自动路由未单独判定",
+      t("测试模式", "play.mode"),
+      selected
+        ? t(`指定 ${selected.tier.toUpperCase()} Key`, "play.mode.selected", selected.tier.toUpperCase())
+        : t("自动路由", "play.mode.auto"),
+    ],
+    [t("测试 Key", "play.testedKey"), selected ? `${selected.display} · ${selected.id}` : "—"],
+    [
+      t("Key 判断", "play.keyVerdict"),
+      keyTest || t("自动路由未单独判定", "play.keyVerdict.none"),
       result.key_test === "usable" ? "ok" : result.key_test ? "bad" : "",
     ],
-    ["实际路由", routeLabel],
-    ["原生协议", route.native_protocol || "—"],
+    [t("实际路由", "play.actualRoute"), routeLabel],
+    [t("原生协议", "play.nativeProtocol"), route.native_protocol || "—"],
     [
-      "匿名判断",
-      `${eligibility.allowed ? "允许" : "拒绝"} · ${eligibility.source || "—"}`,
+      t("匿名判断", "play.anonymousVerdict"),
+      t(
+        `${eligibility.allowed ? "允许" : "拒绝"} · ${eligibility.source || "—"}`,
+        eligibility.allowed ? "play.eligibility.allowed" : "play.eligibility.denied",
+        eligibility.source || "—",
+      ),
       eligibility.allowed ? "ok" : "warn",
     ],
   ]);
@@ -125,7 +140,7 @@ async function run(event) {
   try {
     request = JSON.parse($("#play-request").value);
   } catch (error) {
-    toast(`请求 JSON 无效：${error.message}`, true);
+    toast(t(`请求 JSON 无效：${error.message}`, "toast.play.invalidJson", error.message), true);
     return;
   }
   const keyValue = $("#play-key").value;
@@ -135,7 +150,9 @@ async function run(event) {
       : { mode: "selected", tier: keyValue.split(":")[0], id: keyValue.split(":").slice(1).join(":") };
   $("#play-run").disabled = true;
   $("#play-state").textContent =
-    key.mode === "selected" ? "指定 Key 测试进行中…" : "Gateway 请求进行中…";
+    key.mode === "selected"
+      ? t("指定 Key 测试进行中…", "play.state.testingKey")
+      : t("Gateway 请求进行中…", "play.state.running");
   try {
     store.set(
       "lastPlayground",
@@ -146,7 +163,7 @@ async function run(event) {
     );
   } catch (error) {
     toast(error.message, true);
-    $("#play-state").textContent = "诊断入口请求失败";
+    $("#play-state").textContent = t("诊断入口请求失败", "play.state.failedToCall");
   } finally {
     $("#play-run").disabled = false;
   }
@@ -159,7 +176,10 @@ function renderRequests() {
     .slice(-100)
     .reverse()
     .forEach((request) => {
-      const terminal = { stream_error: "流式响应失败", client_canceled: "客户端已取消" };
+      const terminal = {
+        stream_error: t("流式响应失败", "diag.streamError"),
+        client_canceled: t("客户端已取消", "diag.clientCanceled"),
+      };
       const result = terminal[request.outcome]
         ? `HTTP ${request.status} · ${terminal[request.outcome]}`
         : request.status || request.outcome;
@@ -177,7 +197,7 @@ function renderRequests() {
         ]),
       );
     });
-  if (!host.children.length) emptyRow(host, 9, "尚无请求路由");
+  if (!host.children.length) emptyRow(host, 9, t("尚无请求路由", "diag.noRequests"));
 }
 
 function renderAttempts() {
@@ -200,20 +220,32 @@ function renderAttempts() {
         ]),
       );
     });
-  if (!host.children.length) emptyRow(host, 8, "尚无上游尝试");
+  if (!host.children.length) emptyRow(host, 8, t("尚无上游尝试", "diag.noAttempts"));
 }
 
 function renderMetadata() {
   const monitor = store.get("monitor");
   const debug = store.get("debug");
   const metadata = debug?.metadata || monitor?.resources?.metadata || {};
+  const stamp = (value) => new Date(value).toLocaleString(dateLocale(), { hour12: false });
   renderFacts($("#metadata-facts"), [
-    ["就绪", metadata.ready ? "是" : "否", metadata.ready ? "ok" : "warn"],
-    ["模型数", formatNumber(metadata.models)],
-    ["更新时间", metadata.updated_at ? new Date(metadata.updated_at).toLocaleString("zh-CN", { hour12: false }) : "尚未更新"],
-    ["是否过期", metadata.stale ? "是" : "否", metadata.stale ? "warn" : "ok"],
-    ["下次刷新", metadata.next_refresh ? new Date(metadata.next_refresh).toLocaleString("zh-CN", { hour12: false }) : "—"],
-    ["最近错误", metadata.last_error || "无", metadata.last_error ? "bad" : "ok"],
+    [
+      t("就绪", "diag.ready"),
+      metadata.ready ? t("是", "common.yes") : t("否", "common.no"),
+      metadata.ready ? "ok" : "warn",
+    ],
+    [t("模型数", "diag.modelCount"), formatNumber(metadata.models)],
+    [
+      t("更新时间", "diag.updatedAt"),
+      metadata.updated_at ? stamp(metadata.updated_at) : t("尚未更新", "diag.notUpdated"),
+    ],
+    [t("是否过期", "diag.stale"), metadata.stale ? t("是", "common.yes") : t("否", "common.no"), metadata.stale ? "warn" : "ok"],
+    [t("下次刷新", "diag.nextRefresh"), metadata.next_refresh ? stamp(metadata.next_refresh) : "—"],
+    [
+      t("最近错误", "diag.lastError"),
+      metadata.last_error || t("无", "common.none"),
+      metadata.last_error ? "bad" : "ok",
+    ],
   ]);
 }
 
@@ -236,7 +268,10 @@ function renderRouteModels() {
             class: item.route_error ? "bad" : "",
             text: item.route_error || (plan.length ? plan.join(" → ") : "—"),
           }),
-          el("td", { class: eligibility.allowed ? "ok" : "warn", text: eligibility.allowed ? "允许" : "拒绝" }),
+          el("td", {
+            class: eligibility.allowed ? "ok" : "warn",
+            text: eligibility.allowed ? t("允许", "common.allowed") : t("拒绝", "common.denied"),
+          }),
           el("td", { text: eligibility.source || "—" }),
           el("td", {
             class: "num",
@@ -247,7 +282,7 @@ function renderRouteModels() {
         ]),
       );
     });
-  if (!host.children.length) emptyRow(host, 6, "没有匹配模型");
+  if (!host.children.length) emptyRow(host, 6, t("没有匹配模型", "diag.noMatch"));
 }
 
 let activeTab = "playground";
@@ -290,7 +325,9 @@ export default {
     });
     $("#play-reset").addEventListener("click", resetTemplate);
     $("#play-form").addEventListener("submit", run);
-    $("#play-copy").addEventListener("click", () => copyText($("#play-output").textContent, "原始响应已复制"));
+    $("#play-copy").addEventListener("click", () =>
+      copyText($("#play-output").textContent, t("原始响应已复制", "toast.play.copied")),
+    );
     $("#diagnostic-model-search").addEventListener("input", renderRouteModels);
     store.on("debug", () => {
       renderModels();
@@ -302,6 +339,15 @@ export default {
     });
     store.on("lastPlayground", (value) => {
       if (value) showResult(value);
+    });
+    // The module owns every string it renders, so a language switch rebuilds it.
+    onChange(() => {
+      renderModels();
+      renderLedger();
+      renderMetadata();
+      renderRoute();
+      const last = store.get("lastPlayground");
+      if (last) showResult(last);
     });
   },
   show() {

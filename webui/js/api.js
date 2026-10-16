@@ -1,5 +1,6 @@
 // fetch wrapper: JSON handling, CSRF for writes, 401 routed to the login view.
 import * as store from "./store.js";
+import { t } from "./i18n.js";
 
 let csrf = "";
 let onUnauthorized = null;
@@ -33,7 +34,7 @@ export async function api(path, options = {}) {
     // instead of treating the attempt as an expired session.
     if (response.status === 401 && path !== "/api/auth/login") {
       if (onUnauthorized) onUnauthorized();
-      throw new Error("登录已失效");
+      throw new Error(t("登录已失效", "error.session"));
     }
     throw new Error(data.error?.message || `HTTP ${response.status}`);
   }

@@ -1,6 +1,7 @@
 // Live log stream: SSE connection, bounded buffer and rendering. The
 // connection lifecycle is owned by the console shell.
 import { $, el, timeOnly, toast } from "./ui.js";
+import { t } from "./i18n.js";
 
 let events = [];
 let source = null;
@@ -35,7 +36,7 @@ function render() {
       ]),
     );
   });
-  if (!rows.length) host.append(el("div", { class: "empty", text: "等待日志事件…" }));
+  if (!rows.length) host.append(el("div", { class: "empty", text: t("等待日志事件…", "logs.waiting") }));
   host.scrollTop = host.scrollHeight;
 }
 
@@ -56,7 +57,7 @@ export function connect() {
       });
     }
   });
-  source.addEventListener("gap", () => toast("较早日志已从内存清除", true));
+  source.addEventListener("gap", () => toast(t("较早日志已从内存清除", "logs.gap"), true));
 }
 
 export function disconnect() {
@@ -77,9 +78,17 @@ export function bind() {
   );
   $("#log-pause").addEventListener("click", () => {
     paused = !paused;
-    $("#log-pause").textContent = paused ? "继续" : "暂停";
+    syncPauseButton();
     if (!paused) render();
   });
+}
+
+// The button carries the opposite action of the current state, so it is
+// rebuilt on every language switch.
+export function syncPauseButton() {
+  $("#log-pause").textContent = paused
+    ? t("继续", "logs.resume")
+    : t("暂停", "logs.pause");
 }
 
 export { render };

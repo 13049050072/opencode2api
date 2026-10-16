@@ -1,19 +1,20 @@
 // Page: 模型轮转 — sota/sweet alias groups, ordering, manual switch and attempts.
 import { api, hasSession } from "../api.js";
+import { t, onChange } from "../i18n.js";
 import { $, el, emptyRow, localTime, toast } from "../ui.js";
 
-const reasons = {
-  success: "成功",
-  client_canceled: "调用方取消",
-  quota_or_rate_limit: "额度不足 / 限流",
-  transport_error: "连接错误",
-  first_output_timeout: "首个输出超时",
-  stream_error: "输出中断",
-  response_read_error: "读取响应失败",
-  response_conversion_error: "响应解析或转换失败",
-  request_conversion_error: "请求转换失败",
-  upstream_error: "上游错误",
-};
+const reasons = () => ({
+  success: t("成功", "rotation.reason.success"),
+  client_canceled: t("调用方取消", "rotation.reason.clientCanceled"),
+  quota_or_rate_limit: t("额度不足 / 限流", "rotation.reason.quota"),
+  transport_error: t("连接错误", "rotation.reason.transport"),
+  first_output_timeout: t("首个输出超时", "rotation.reason.firstOutputTimeout"),
+  stream_error: t("输出中断", "rotation.reason.streamError"),
+  response_read_error: t("读取响应失败", "rotation.reason.readError"),
+  response_conversion_error: t("响应解析或转换失败", "rotation.reason.conversionError"),
+  request_conversion_error: t("请求转换失败", "rotation.reason.requestConversion"),
+  upstream_error: t("上游错误", "rotation.reason.upstreamError"),
+});
 
 let data = null;
 let dirty = false;
@@ -44,6 +45,7 @@ async function load() {
 }
 
 function renderGroup(group) {
+  const reasonMap = reasons();
   const aliasInput = el("input", {
     id: `rotation-alias-${group.id}`,
     value: group.alias,
@@ -56,7 +58,16 @@ function renderGroup(group) {
   });
   const table = el("table", { class: "table" }, [
     el("thead", {}, [
-      el("tr", {}, ["顺序", "模型", "状态 / 恢复时间", "操作"].map((text) => el("th", { text }))),
+      el(
+        "tr",
+        {},
+        [
+          t("顺序", "rotation.col.order"),
+          t("模型", "common.model"),
+          t("状态 / 恢复时间", "rotation.col.state"),
+          t("操作", "common.action"),
+        ].map((text) => el("th", { text })),
+      ),
     ]),
   ]);
   const body = el("tbody");
@@ -71,18 +82,18 @@ function renderGroup(group) {
     row.append(
       el("td", {
         text: !group.available[model]
-          ? "已下架 / 暂不可用"
+          ? t("已下架 / 暂不可用", "rotation.unavailable")
           : paused
-            ? `暂停至 ${localTime(until)}`
+            ? t(`暂停至 ${localTime(until)}`, "rotation.pausedUntil", localTime(until))
             : model === group.current
-              ? "当前使用"
-              : "可用",
+              ? t("当前使用", "rotation.inUse")
+              : t("可用", "state.available"),
       }),
     );
     const actions = el("div", { class: "rotation-actions" });
     for (const [text, delta] of [
-      ["上移", -1],
-      ["下移", 1],
+      [t("上移", "rotation.moveUp"), -1],
+      [t("下移", "rotation.moveDown"), 1],
     ]) {
       const button = el("button", {
         type: "button",
@@ -105,8 +116,8 @@ function renderGroup(group) {
     const select = el("button", {
       type: "button",
       class: "btn btn-sm btn-ghost",
-      text: "设为当前",
-      "aria-label": `使用 ${model}`,
+      text: t("设为当前", "rotation.setCurrent"),
+      "aria-label": t(`使用 ${model}`, "rotation.useModel", model),
       disabled: !group.available[model],
     });
     select.addEventListener("click", async () => {
@@ -125,7 +136,7 @@ function renderGroup(group) {
         }
         data.persistence_error = result.persistence_error;
         render();
-        toast("当前模型已切换");
+        toast(t("当前模型已切换", "toast.rotation.switched"));
       } catch (error) {
         select.disabled = false;
         toast(error.message, true);
@@ -135,25 +146,34 @@ function renderGroup(group) {
     row.append(el("td", {}, [actions]));
     body.append(row);
   });
-  if (!group.order.length) emptyRow(body, 4, "等待 Go 模型目录");
-  const recent = el("div", { class: "rotation-switches" }, [el("h3", { text: "最近切换" })]);
+  if (!group.order.length) emptyRow(body, 4, t("等待 Go 模型目录", "rotation.waitingCatalog"));
+  const recent = el("div", { class: "rotation-switches" }, [
+    el("h3", { text: t("最近切换", "rotation.recentSwitches") }),
+  ]);
   for (const item of (group.switches || []).slice(-5).reverse()) {
     recent.append(
       el("p", {
-        text: `${localTime(item.time)} · ${item.from} → ${item.to} · ${reasons[item.reason] || item.reason}`,
+        text: `${localTime(item.time)} · ${item.from} → ${item.to} · ${
+          reasonMap[item.reason] || item.reason
+        }`,
       }),
     );
   }
-  if (!group.switches?.length) recent.append(el("p", { text: "尚无切换记录" }));
+  if (!group.switches?.length)
+    recent.append(el("p", { text: t("尚无切换记录", "rotation.noSwitches") }));
   return el("section", { class: "section rotation-group" }, [
-    el("h2", { class: "section-title", text: group.id === "sota" ? "SOTA" : "甜点" }),
+    el("h2", { class: "section-title", text: group.id === "sota" ? "SOTA" : t("甜点", "rotation.sweet") }),
     el("div", { class: "field" }, [
-      el("label", { for: `rotation-alias-${group.id}`, text: "调用别名" }),
+      el("label", { for: `rotation-alias-${group.id}`, text: t("调用别名", "rotation.aliasLabel") }),
       aliasInput,
     ]),
     el("p", {
       class: "rotation-current",
-      text: `当前模型：${group.current || "等待可用模型"}`,
+      text: t(
+        `当前模型：${group.current || t("等待可用模型", "rotation.waitingModel")}`,
+        "rotation.current",
+        group.current || t("等待可用模型", "rotation.waitingModel"),
+      ),
     }),
     el("div", { class: "table-wrap" }, [table]),
     recent,
@@ -161,8 +181,11 @@ function renderGroup(group) {
 }
 
 function render() {
+  if (!data) return;
+  const reasonMap = reasons();
   $("#rotation-status").textContent =
-    data.persistence_error || "状态已更新 · 两组独立轮转，所有调用方共享当前位置。";
+    data.persistence_error ||
+    t("状态已更新 · 两组独立轮转，所有调用方共享当前位置。", "rotation.status");
   $("#rotation-timeout").value = data.first_output_seconds;
   const host = $("#rotation-groups");
   host.replaceChildren();
@@ -177,11 +200,12 @@ function render() {
         el("td", { text: item.alias }),
         el("td", { class: "mono", text: item.model }),
         el("td", { class: "num", text: String(item.number) }),
-        el("td", { text: reasons[item.outcome] || item.outcome }),
+        el("td", { text: reasonMap[item.outcome] || item.outcome }),
       ]),
     );
   }
-  if (!data.attempts?.length) emptyRow(attempts, 6, "调用分组别名后显示最近 100 次尝试");
+  if (!data.attempts?.length)
+    emptyRow(attempts, 6, t("调用分组别名后显示最近 100 次尝试", "rotation.attemptsEmpty"));
 }
 
 async function save(event) {
@@ -195,7 +219,7 @@ async function save(event) {
     data = normalize(await api("/api/rotation", { method: "PUT", body: JSON.stringify(body) }));
     dirty = false;
     render();
-    toast("模型轮转配置已保存并生效");
+    toast(t("模型轮转配置已保存并生效", "toast.rotation.saved"));
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -210,7 +234,7 @@ export default {
   init() {
     $("#rotation-refresh").addEventListener("click", () => {
       if (dirty) {
-        toast("有未保存的修改，请先保存后刷新", true);
+        toast(t("有未保存的修改，请先保存后刷新", "toast.rotation.dirty"), true);
         return;
       }
       load();
@@ -219,6 +243,12 @@ export default {
       dirty = true;
     });
     $("#rotation-form").addEventListener("submit", save);
+    onChange(() => {
+      if (data) {
+        data.first_output_seconds = Number($("#rotation-timeout").value);
+        render();
+      }
+    });
   },
   show: load,
 };

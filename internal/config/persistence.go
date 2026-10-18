@@ -9,9 +9,18 @@ import (
 	"runtime"
 )
 
-// SaveAtomic writes normalized JSON and keeps the preceding file as
-// config.json.bak. The temporary file is created beside the target so the
-// final rename stays on the same filesystem.
+// SaveAtomic writes cfg to path as indented JSON, after clearing the resolved
+// proxy list (see PasswordForSave). It does not normalize cfg; callers pass a
+// config that Normalize already accepted. An existing file is kept as
+// path+".bak".
+//
+// The data is written and synced to a temporary file created beside the
+// target, so the final rename stays on the same filesystem; the temporary
+// file takes over the existing file's permission bits. Outside Windows the
+// backup is a copy and the rename replaces path atomically. On Windows it
+// takes two renames instead, path to the backup and then the temporary file
+// to path, so path is briefly absent; if the second rename fails, the backup
+// is moved back.
 func SaveAtomic(path string, cfg Config) error {
 	cfg.PasswordForSave()
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -65,6 +74,8 @@ func SaveAtomic(path string, cfg Config) error {
 	return nil
 }
 
+// copyFile copies source to target, truncating target, and preserves source's
+// permission bits. The copy is synced before target is closed.
 func copyFile(source, target string) error {
 	in, err := os.Open(source)
 	if err != nil {

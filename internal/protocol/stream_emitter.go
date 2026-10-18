@@ -67,7 +67,6 @@ type bridgeStreamEncoder struct {
 	nextAnthropic   int
 	textItemID      string
 	textOutput      int
-	responseOutput  []any
 }
 
 // bridgeStreamEmitter builds an encoder for the target protocol. The response

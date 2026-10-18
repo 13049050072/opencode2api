@@ -135,6 +135,27 @@ func RuntimeManager(root context.Context, configPath string, cfg config.Config, 
 	return manager, nil
 }
 
+// migrateAvailabilityPath moves the legacy 40-bit state file to its 64-bit
+// fingerprint path when no file at the new path already exists. A new-format
+// file takes precedence.
+
+func migrateAvailabilityPath(legacyPath, currentPath string) error {
+	if legacyPath == "" || currentPath == "" || legacyPath == currentPath {
+		return nil
+	}
+	if _, err := os.Stat(currentPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return os.Rename(legacyPath, currentPath)
+}
+
 // build constructs a runtime for cfg without starting it. The runtime shares
 // the controller's rotation manager and pricing metadata, and keeps the
 // current runtime's availability registry while the Zen upstream is
@@ -148,6 +169,9 @@ func (m *RuntimeController) build(cfg config.Config) (*gatewayRuntime, error) {
 	availabilityPath := ""
 	if m.configPath != "" {
 		availabilityPath = m.configPath + "." + config.Fingerprint(cfg.Upstream.Zen) + ".availability.json"
+		if err := migrateAvailabilityPath(m.configPath+"."+config.Fingerprint(cfg.Upstream.Zen)[:10]+".availability.json", availabilityPath); err != nil {
+			return nil, fmt.Errorf("migrate model availability: %w", err)
+		}
 	}
 	availability, err := modelcatalog.AvailabilityStore(availabilityPath)
 	if err != nil {

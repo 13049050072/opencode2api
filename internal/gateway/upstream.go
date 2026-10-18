@@ -213,12 +213,12 @@ func stripStaleReasoningInputs(route models.Route, bodies map[config.Tier][]byte
 // doUpstreamTiers runs one routing pass and reports the response, the route
 // that produced it, and the attempt count so far (attemptOffset plus the
 // attempts made here). A debug key override short-circuits to that single key
-// and reports only its own attempt, without attemptOffset. Otherwise an
-// anonymous route first tries the free tier, then every tier in
-// route.KeyTiers order (a keyed Zen or Go route without KeyTiers uses its own
-// tier) until one returns 2xx. Without a success it returns the last HTTP
-// response, whose body is still open, in preference to the last error. Once
-// ctx is done it no longer enters the key tiers.
+// and reports its attempt including attemptOffset. Otherwise an anonymous
+// route first tries the free tier, then every tier in route.KeyTiers order (a
+// keyed Zen or Go route without KeyTiers uses its own tier) until one returns
+// 2xx. Without a success it returns the last HTTP response, whose body is still
+// open, in preference to the last error. Once ctx is done it no longer enters
+// the key tiers.
 func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodies map[config.Tier][]byte, ids identity.RequestIDs, attemptOffset int) (*http.Response, models.Route, int, error) {
 	var lastResponse *http.Response
 	var lastErr error
@@ -227,7 +227,7 @@ func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodie
 	g.dumpOutboundBodies(route, bodies, ids, attemptOffset)
 	if override, selected := debugKeyOverrideFrom(ctx); selected {
 		resp, err, used := g.doSelectedKeyUpstream(ctx, route, bodies, ids, override, attemptOffset)
-		return resp, route, used, err
+		return resp, route, attemptOffset + used, err
 	}
 	if route.Anonymous {
 		resp, err, used := g.doAnonymousUpstream(ctx, route, bodies, ids, attempts)
@@ -352,11 +352,10 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 				}
 				break
 			}
-			attempts++
+			setRequestShape(ctx, false, toolAliases[index])
 			if meta := telemetry.MetaFromContext(ctx); meta != nil {
 				meta.Attempts = attemptOffset + attempts
 				meta.Tier = string(config.TierZen)
-				meta.ToolAlias = toolAliases[index]
 			}
 			if lastResponse != nil {
 				httpx.DrainAndClose(lastResponse.Body)
@@ -600,6 +599,7 @@ func ensureV1ReadTool(payload map[string]any, protocol wire.Protocol) (string, b
 	}
 	candidateIndex := -1
 	candidateName := ""
+	caseFoldCandidate := false
 	for index, item := range items {
 		name := anonymousToolName(protocol, item)
 		if name == "" {
@@ -609,9 +609,12 @@ func ensureV1ReadTool(payload map[string]any, protocol wire.Protocol) (string, b
 			return "", false
 		}
 		if strings.EqualFold(name, v1ReadTool) {
-			candidateIndex = index
-			candidateName = name
-			break
+			if !caseFoldCandidate {
+				candidateIndex = index
+				candidateName = name
+				caseFoldCandidate = true
+			}
+			continue
 		}
 		if candidateIndex < 0 && isV1ReadToolCandidate(name) {
 			candidateIndex = index
@@ -945,10 +948,7 @@ func (g *Gateway) doSelectedKeyUpstream(ctx context.Context, route models.Route,
 	if changed {
 		body = shaped
 	}
-	if meta := telemetry.MetaFromContext(ctx); meta != nil {
-		meta.Shaped = changed
-		meta.ToolAlias = alias
-	}
+	setRequestShape(ctx, changed, alias)
 	proxy := nodes.Proxy(node)
 	if proxy == nil {
 		return nil, errors.New("selected upstream key has no proxy binding"), 0
@@ -1009,10 +1009,7 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 	if changed {
 		body = shaped
 	}
-	if meta := telemetry.MetaFromContext(ctx); meta != nil {
-		meta.Shaped = changed
-		meta.ToolAlias = alias
-	}
+	setRequestShape(ctx, changed, alias)
 	for attempts < g.cfg.Retry.MaxAttempts {
 		if ctx.Err() != nil {
 			// Same guard as the anonymous loop: an exhausted request budget

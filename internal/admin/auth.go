@@ -214,8 +214,7 @@ func (a *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 
 // allowLogin reports whether client may try to log in: at most five failures
 // per five-minute window. Once more than 1024 clients are tracked it also
-// drops windows older than five minutes, and it refuses a new client outright
-// when 4096 are tracked, so the map cannot grow without bound.
+// drops windows older than five minutes and evicts the oldest window at capacity.
 func (a *Server) allowLogin(client string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -228,7 +227,7 @@ func (a *Server) allowLogin(client string) bool {
 		}
 	}
 	if _, exists := a.attempts[client]; !exists && len(a.attempts) >= 4096 {
-		return false
+		a.removeOldestLoginWindowLocked()
 	}
 	window := a.attempts[client]
 	if window.Started.IsZero() || now.Sub(window.Started) > 5*time.Minute {
@@ -247,8 +246,26 @@ func (a *Server) recordLoginFailure(client string) {
 	if window.Started.IsZero() || now.Sub(window.Started) > 5*time.Minute {
 		window = loginWindow{Started: now}
 	}
+	if _, exists := a.attempts[client]; !exists && len(a.attempts) >= 4096 {
+		a.removeOldestLoginWindowLocked()
+	}
 	window.Count++
 	a.attempts[client] = window
+}
+
+// removeOldestLoginWindowLocked evicts one window so inserting a new client
+// cannot exceed the cap. a.mu must be held.
+func (a *Server) removeOldestLoginWindowLocked() {
+	var oldestAddress string
+	var oldest time.Time
+	for address, candidate := range a.attempts {
+		if oldest.IsZero() || candidate.Started.Before(oldest) {
+			oldestAddress, oldest = address, candidate.Started
+		}
+	}
+	if !oldest.IsZero() {
+		delete(a.attempts, oldestAddress)
+	}
 }
 
 // cleanupSessionsLocked deletes the expired sessions; a.mu must be held.

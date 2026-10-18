@@ -401,14 +401,17 @@ func (c *ModelCatalog) RouteForTier(model string, tier config.Tier, hasZenKeys, 
 	}, nil
 }
 
-// anonymousDecision asks the pricing registry whether model is free and falls
-// back to the name rule while none is attached. It reads c.pricing, which
-// SetPricingStore only writes while a runtime is being built.
-func (c *ModelCatalog) anonymousDecision(model string) AnonymousDecision {
-	if c.pricing != nil {
-		return c.pricing.Decide(model)
+// anonymousDecisionWithPricing asks the pricing registry snapshot whether model
+// is free and falls back to the name rule while none is attached.
+func anonymousDecisionWithPricing(model string, pricing *PricingRegistry) AnonymousDecision {
+	if pricing != nil {
+		return pricing.Decide(model)
 	}
 	return AnonymousDecision{Allowed: isFreeModel(model), Source: "name_fallback_metadata_pending"}
+}
+
+func (c *ModelCatalog) anonymousDecision(model string) AnonymousDecision {
+	return anonymousDecisionWithPricing(model, c.pricing)
 }
 
 // IsFreeModel reports whether the catalog considers the model free-tier: its
@@ -429,12 +432,14 @@ func (c *ModelCatalog) Diagnostic(model string, requested wire.Protocol, hasZenK
 	c.mu.RLock()
 	configured, explicit := c.protocols[model]
 	zen, goModel := c.zen[model], c.goModels[model]
+	_, zenKnown := c.nativeProtocols[config.TierZen][model]
+	_, goKnown := c.nativeProtocols[config.TierGo][model]
+	prefer := c.prefer
 	nativeProtocols := map[config.Tier]wire.Protocol{
 		config.TierZen: c.protocolForLocked(model, config.TierZen),
 		config.TierGo:  c.protocolForLocked(model, config.TierGo),
 	}
-	_, zenKnown := c.nativeProtocols[config.TierZen][model]
-	_, goKnown := c.nativeProtocols[config.TierGo][model]
+	pricing := c.pricing
 	c.mu.RUnlock()
 	source := "configured"
 	if !explicit {
@@ -448,13 +453,13 @@ func (c *ModelCatalog) Diagnostic(model string, requested wire.Protocol, hasZenK
 		// Route() below selects the preferred available tier. This is only the
 		// fallback shown when no route can currently be built.
 		protocol = nativeProtocols[config.TierZen]
-		if c.prefer == config.TierGo {
+		if prefer == config.TierGo {
 			protocol = nativeProtocols[config.TierGo]
 		}
 	}
 	diagnostic := RouteDiagnostic{
 		Model: model, RequestedProtocol: requested, NativeProtocol: protocol, NativeProtocols: nativeProtocols, ProtocolSource: source,
-		AvailableZen: zen, AvailableGo: goModel, AnonymousEligibility: c.anonymousDecision(model),
+		AvailableZen: zen, AvailableGo: goModel, AnonymousEligibility: anonymousDecisionWithPricing(model, pricing),
 	}
 	route, err := c.Route(model, hasZenKeys, hasGoKeys, hasAnonymous)
 	if err != nil {

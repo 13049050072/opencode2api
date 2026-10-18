@@ -21,10 +21,12 @@ import (
 )
 
 // metadataDefaultURL is the OpenCode metadata endpoint, metadataRefresh the
-// interval between refreshes, and metadataTimeout the limit of one fetch.
+// interval between refreshes, metadataRetry the delay after a failed refresh,
+// and metadataTimeout the limit of one fetch.
 const (
 	metadataDefaultURL = CapabilitiesURL
 	metadataRefresh    = 24 * time.Hour
+	metadataRetry      = time.Minute
 	metadataTimeout    = 30 * time.Second
 )
 
@@ -58,8 +60,8 @@ type AnonymousDecision struct {
 
 // MetadataSnapshot reports the freshness of the pricing metadata. Ready means
 // models were loaded from the cache or the endpoint. Stale means the last
-// successful refresh is older than the refresh interval, and NextRefresh is
-// UpdatedAt plus that interval, not the refresh loop's actual schedule.
+// successful refresh is older than the refresh interval. NextRefresh is the
+// next scheduled refresh, or nil when the refresh loop has not started.
 type MetadataSnapshot struct {
 	Ready       bool       `json:"ready"`
 	Models      int        `json:"models"`
@@ -84,6 +86,7 @@ type PricingRegistry struct {
 	mu             sync.RWMutex
 	models         map[string]Price
 	updatedAt      time.Time
+	nextRefresh    time.Time
 	lastError      string
 	cachePath      string
 	endpoint       string
@@ -138,35 +141,50 @@ func (store *PricingRegistry) refreshClients() []*http.Client {
 	return clients
 }
 
-// Start refreshes the metadata at once and then every metadataRefresh in the
-// background until ctx ends. A failed refresh is logged and keeps the previous
-// data.
+// Start refreshes the metadata at once and then periodically until ctx ends.
+// Failed refreshes are logged and retried after metadataRetry.
 func (store *PricingRegistry) Start(ctx context.Context) {
 	go func() {
-		store.refreshAndLog(ctx)
-		ticker := time.NewTicker(metadataRefresh)
-		defer ticker.Stop()
 		for {
+			if ctx.Err() != nil {
+				return
+			}
+			store.setNextRefresh(time.Time{})
+			delay := metadataRetry
+			if store.refreshAndLog(ctx) {
+				delay = metadataRefresh
+			}
+			store.setNextRefresh(time.Now().Add(delay))
+			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
+				store.setNextRefresh(time.Time{})
 				return
-			case <-ticker.C:
-				store.refreshAndLog(ctx)
+			case <-timer.C:
+				store.setNextRefresh(time.Time{})
 			}
 		}
 	}()
 }
 
-func (store *PricingRegistry) refreshAndLog(ctx context.Context) {
+func (store *PricingRegistry) setNextRefresh(next time.Time) {
+	store.mu.Lock()
+	store.nextRefresh = next
+	store.mu.Unlock()
+}
+
+func (store *PricingRegistry) refreshAndLog(ctx context.Context) bool {
 	if err := store.Refresh(ctx); err != nil {
 		if store.logger != nil {
 			store.logger.Warn("OpenCode metadata refresh failed", "component", "models", "event", "metadata_refresh_failed", "error", err)
 		}
-		return
+		return false
 	}
 	if store.logger != nil {
 		store.logger.Info("OpenCode metadata refreshed", "component", "models", "event", "metadata_refreshed", "models", store.Snapshot().Models)
 	}
+	return true
 }
 
 // Refresh fetches the metadata, trying each refresh client in turn until one
@@ -297,9 +315,12 @@ func (store *PricingRegistry) Snapshot() MetadataSnapshot {
 	snapshot := MetadataSnapshot{Ready: !store.updatedAt.IsZero() && len(store.models) > 0, Models: len(store.models), LastError: store.lastError, CachePath: store.cachePath}
 	if !store.updatedAt.IsZero() {
 		updated := store.updatedAt.UTC()
-		next := updated.Add(metadataRefresh)
-		snapshot.UpdatedAt, snapshot.NextRefresh = &updated, &next
+		snapshot.UpdatedAt = &updated
 		snapshot.Stale = time.Since(updated) > metadataRefresh
+	}
+	if !store.nextRefresh.IsZero() {
+		next := store.nextRefresh.UTC()
+		snapshot.NextRefresh = &next
 	}
 	return snapshot
 }

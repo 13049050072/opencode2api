@@ -213,6 +213,8 @@ func Normalize(path string, cfg Config) (Config, error) {
 		return Config{}, err
 	}
 	trimList(&cfg.ServerKeys)
+	remapServerKeyMetadata(&cfg)
+
 	trimList(&cfg.ZenKeys)
 	trimList(&cfg.GoKeys)
 	cfg.ProxyFile = strings.TrimSpace(cfg.ProxyFile)
@@ -241,7 +243,7 @@ func Normalize(path string, cfg Config) (Config, error) {
 		return Config{}, errors.New("server_keys must contain at least one local key")
 	}
 	if cfg.FirstEnabledServerKey() == "" {
-		return Config{}, errors.New("至少保留一个启用的 API Key")
+		return Config{}, errors.New("at least one server key must remain enabled")
 	}
 	if !cfg.Anonymous && len(cfg.ZenKeys) == 0 && len(cfg.GoKeys) == 0 {
 		return Config{}, errors.New("zen_keys or go_keys must contain at least one upstream key unless anonymous is enabled")
@@ -313,6 +315,24 @@ func Normalize(path string, cfg Config) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func remapServerKeyMetadata(cfg *Config) {
+	if len(cfg.ServerKeyMetadata) == 0 {
+		return
+	}
+	for _, key := range cfg.ServerKeys {
+		oldID := Fingerprint(key)[:10]
+		metadata, exists := cfg.ServerKeyMetadata[oldID]
+		if !exists {
+			continue
+		}
+		newID := Fingerprint(key)
+		if _, alreadyPresent := cfg.ServerKeyMetadata[newID]; !alreadyPresent {
+			cfg.ServerKeyMetadata[newID] = metadata
+		}
+		delete(cfg.ServerKeyMetadata, oldID)
+	}
 }
 
 // normalizeReasoning validates and canonicalizes the forced thinking level.

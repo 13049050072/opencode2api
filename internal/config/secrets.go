@@ -104,14 +104,14 @@ func (r *Redactor) String(value string) string {
 	return value
 }
 
-// Fingerprint returns the first 10 hex digits of the SHA-256 of value. It is
+// Fingerprint returns the first 16 hex digits of the SHA-256 of value. It is
 // the stable ID of a secret in config, session and usage bookkeeping
 // (ServerKeyMetadata is keyed by it), and it doubles as the id of the masked
 // secrets, API keys and Playground key choices that the WebUI shows and sends
 // back.
 func Fingerprint(value string) string {
 	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])[:10]
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // KeyDisplayID returns the last five characters of value, or the whole value

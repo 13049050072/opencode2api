@@ -402,9 +402,10 @@ func (m *Metrics) Record(endpoint string, status int, duration time.Duration, me
 // requestSucceeded reports whether a request counts as a success: a 2xx or 3xx
 // status and no terminal failure in meta.Outcome. A stream can fail after HTTP
 // headers have been sent. Preserve its HTTP status while using the terminal
-// result for request success and error counts.
+// result for request success and error counts. Without metadata, terminal
+// outcome is unknown and the request is conservatively counted as a failure.
 func requestSucceeded(status int, meta *RequestMeta) bool {
-	return status >= 200 && status < 400 && (meta == nil || meta.Outcome == "")
+	return status >= 200 && status < 400 && meta != nil && meta.Outcome == ""
 }
 
 // requestOutcome classifies a request that carries no explicit outcome. A

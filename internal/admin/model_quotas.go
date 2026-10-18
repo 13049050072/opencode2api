@@ -170,6 +170,7 @@ func (a *Server) handleModelQuotas(w http.ResponseWriter, r *http.Request) {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-r.Context().Done():
+				entries[i] = previous
 				return
 			}
 			entries[i] = refreshQuota(r.Context(), endpoint, key, previous)

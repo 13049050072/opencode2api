@@ -195,8 +195,32 @@ func callerScope(ctx context.Context) string {
 // A rotation group alias is handed to handleRotation. Any other model is
 // routed through the catalog, encoded per upstream tier, sent through
 // doUpstream and translated back into external, streaming or not.
+type requestShapeContextKey struct{}
+
+type requestShape struct {
+	shaped    bool
+	toolAlias string
+}
+
+func setRequestShape(ctx context.Context, shaped bool, toolAlias string) {
+	if state, ok := ctx.Value(requestShapeContextKey{}).(*requestShape); ok {
+		state.shaped, state.toolAlias = shaped, toolAlias
+	}
+	if meta := telemetry.MetaFromContext(ctx); meta != nil {
+		meta.Shaped, meta.ToolAlias = shaped, toolAlias
+	}
+}
+
+func requestShapeFrom(ctx context.Context) requestShape {
+	if state, ok := ctx.Value(requestShapeContextKey{}).(*requestShape); ok && state != nil {
+		return *state
+	}
+	return requestShape{}
+}
+
 func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(context.WithValue(r.Context(), requestShapeContextKey{}, &requestShape{}))
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
 			wire.WriteError(w, external, http.StatusBadRequest, "request body is too large or unreadable", "invalid_request_error", "")
@@ -308,10 +332,8 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			copyErrorResponse(w, external, resp, ids.Request)
 			return
 		}
-		var toolAlias string
-		if meta != nil {
-			toolAlias = meta.ToolAlias
-		}
+		shape := requestShapeFrom(r.Context())
+		toolAlias := shape.toolAlias
 		if stream {
 			if meta != nil {
 				meta.Stream = true
@@ -351,7 +373,7 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			wire.WriteError(w, external, http.StatusBadGateway, "failed to read upstream response", "upstream_error", ids.Request)
 			return
 		}
-		if upstreamRoute.Anonymous || (meta != nil && meta.Shaped) {
+		if upstreamRoute.Anonymous || shape.shaped {
 			// The anonymous lane, and a key-tier request shaped like it, is
 			// force-streamed upstream (see prepareAnonymousBody); collapse
 			// the events back into the single document this non-streaming

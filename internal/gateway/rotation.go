@@ -215,9 +215,7 @@ func (g *Gateway) rotationAttempt(parent context.Context, w http.ResponseWriter,
 		return result
 	}
 	body, toolAlias, shaped := g.shapeKeyBody(bodies[config.TierGo], route, config.TierGo)
-	if meta := telemetry.MetaFromContext(parent); meta != nil {
-		meta.ToolAlias = toolAlias
-	}
+	setRequestShape(parent, shaped, toolAlias)
 	cursor := g.goNodes.CursorFor(ids.Session)
 	var node *upstreamNode
 	// Each group attempt is exactly one HTTP call. Key selection may change,
@@ -245,15 +243,25 @@ func (g *Gateway) rotationAttempt(parent context.Context, w http.ResponseWriter,
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	setRequestCredential(parent, config.TierGo, config.KeyDisplayID(node.key), "key", false, proxy)
 	started := time.Now()
-	resp, err := client.Do(req)
+	if proxy.pool {
+		req.Close = true
+	}
+	resp, err := doInferenceAttempt(&client, req, 0, g.attemptTimeout)
+	if err != nil && ctx.Err() != nil && parent.Err() == nil && !isProxyFailure(err) {
+		// The rotation-specific first-output deadline is not evidence that the
+		// proxy route failed. It still counts as a failed key attempt.
+		err = errFirstEventTimeout
+	}
 	g.recordUpstreamAttempt(parent, route, ids, attempt, config.KeyDisplayID(node.key), "key", false, proxy, resp, err, time.Since(started))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
+	if parent.Err() == nil {
+		g.observeKeyResult(parent, g.goNodes, node, proxy, resp, err)
+	}
 	if err != nil {
 		result.err = err
-		result.reason = "transport_error"
-		if ctx.Err() != nil {
+		if errors.Is(err, errFirstEventTimeout) || ctx.Err() != nil {
 			result.reason = "first_output_timeout"
 		}
 		return result

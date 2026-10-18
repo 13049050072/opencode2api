@@ -258,11 +258,14 @@ func (m *Manager) Select(id string, visited map[string]bool) (Token, bool) {
 }
 
 // switchLocked sets the Current of g to to, bumps its Generation and records
-// the switch, keeping the latest 30. The caller persists the state.
+// the switch only when the model changes, keeping the latest 30. The caller persists the state.
 func (m *Manager) switchLocked(g *Group, to, reason string) {
 	from := g.Current
 	g.Current = to
 	g.Generation++
+	if from == to {
+		return
+	}
 	g.Switches = append(g.Switches, Switch{time.Now().UTC(), from, to, reason})
 	if len(g.Switches) > 30 {
 		g.Switches = g.Switches[len(g.Switches)-30:]
@@ -271,8 +274,8 @@ func (m *Manager) switchLocked(g *Group, to, reason string) {
 
 // Fail pauses the model of t for pause, never shortening a longer pause. If
 // t is still the group's Current at the same generation, Current moves to the
-// next usable model in the order; when there is none, the recorded switch
-// keeps the same model but still bumps the generation.
+// next usable model in the order; when there is none, it remains the same model
+// and Generation still bumps without recording a switch.
 func (m *Manager) Fail(t Token, pause time.Duration, reason string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

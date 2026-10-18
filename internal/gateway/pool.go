@@ -597,30 +597,50 @@ func (p *upstreamNodes) CursorFor(affinity string) nodeCursor {
 	return nodeCursor{pool: p, next: int(hash.Sum64() % uint64(len(p.nodes)))}
 }
 
-// Next returns the first node from the cursor position that is not cooling
-// down or, when every key is cooling, the one whose cooldown expires
-// earliest, and moves the cursor past it. Unlike anonymousCursor.Next it never
-// returns nil for a non-empty pool and may revisit a node, so callers bound
-// their attempts themselves.
+// Next chooses an uncooled key on a healthy proxy first, then the earliest
+// cooling key on any healthy proxy. Only when no healthy proxy has a key does
+// it fall back to an uncooled key on an unhealthy proxy, then the earliest
+// cooldown overall. It moves the cursor past the selected node. Unlike
+// anonymousCursor.Next it never returns nil for a non-empty pool and may revisit
+// a node, so callers bound attempts themselves.
 func (c *nodeCursor) Next() *upstreamNode {
 	if c.pool == nil || len(c.pool.nodes) == 0 {
 		return nil
 	}
 	now := time.Now().UnixNano()
-	choice := -1
-	var earliest int64
-	for offset := 0; offset < len(c.pool.nodes); offset++ {
+	ready, healthyReady := -1, -1
+	var earliest, healthyEarliest int64
+	choice, healthyChoice := -1, -1
+	for offset := range len(c.pool.nodes) {
 		i := (c.next + offset) % len(c.pool.nodes)
-		until := c.pool.nodes[i].cooldownUntil.Load()
+		node := c.pool.nodes[i]
+		proxy := c.pool.Proxy(node)
+		healthy := proxy != nil && proxy.healthy.Load()
+		until := node.cooldownUntil.Load()
 		if until <= now {
-			choice = i
-			break
+			if healthy {
+				healthyReady = i
+				break
+			}
+			if ready < 0 {
+				ready = i
+			}
+			continue
 		}
-		if choice == -1 || until < earliest {
+		if healthy && (healthyChoice < 0 || until < healthyEarliest) {
+			healthyChoice, healthyEarliest = i, until
+		}
+		if choice < 0 || until < earliest {
 			choice, earliest = i, until
 		}
 	}
-	if choice < 0 {
+	if healthyReady >= 0 {
+		choice = healthyReady
+	} else if healthyChoice >= 0 {
+		choice = healthyChoice
+	} else if ready >= 0 {
+		choice = ready
+	} else if choice < 0 {
 		return nil
 	}
 	c.next = (choice + 1) % len(c.pool.nodes)

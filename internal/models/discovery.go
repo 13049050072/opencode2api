@@ -219,9 +219,12 @@ func FetchCapabilities(ctx context.Context, client *http.Client, endpoint string
 
 // FetchProtocolDocs parses the endpoint table of an OpenCode documentation
 // page into a model-to-protocol map, deriving the protocol from the endpoint
-// path of each row. It fails when no row matches. Unlike FetchCapabilities it
-// requires a non-nil client.
+// path of each row. It fails when no row matches. A nil client uses
+// http.DefaultClient.
 func FetchProtocolDocs(ctx context.Context, client *http.Client, endpoint string) (map[string]wire.Protocol, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err

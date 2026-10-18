@@ -90,17 +90,16 @@ func ForcedEffort(protocol Protocol, body map[string]any, effort string) {
 //
 // The shapes differ per protocol, and each one mirrors how that protocol
 // expresses the level natively: Anthropic in a non-blank output_config.effort
-// (or top-level effort) string, Chat in a reasoning_effort string, and
-// Responses in a reasoning.effort string. The check is structural: a string
-// value counts (and for Anthropic must not be blank), so it cannot tell a level
-// the client stated from one the converter derived from a budget, because the
-// converter writes both as strings. A missing or non-string value counts as no
+// (or top-level effort) string, Chat in a non-blank reasoning_effort string,
+// string value counts for Responses, so it cannot tell a non-blank level
+// the client stated from one derived from a budget. Blank values count as
+// unset on every protocol; a missing or non-string value also counts as no
 // level.
 func clientEffortExplicit(protocol Protocol, body map[string]any) bool {
 	switch protocol {
 	case Chat:
-		_, ok := body["reasoning_effort"].(string)
-		return ok
+		effort, ok := body["reasoning_effort"].(string)
+		return ok && strings.TrimSpace(effort) != ""
 	case Anthropic:
 		if effort, ok := jsonutil.AnyAt(body, "output_config", "effort").(string); ok && strings.TrimSpace(effort) != "" {
 			return true
@@ -108,8 +107,8 @@ func clientEffortExplicit(protocol Protocol, body map[string]any) bool {
 		effort, ok := body["effort"].(string)
 		return ok && strings.TrimSpace(effort) != ""
 	case Responses:
-		_, ok := jsonutil.AnyAt(body, "reasoning", "effort").(string)
-		return ok
+		effort, ok := jsonutil.AnyAt(body, "reasoning", "effort").(string)
+		return ok && strings.TrimSpace(effort) != ""
 	default:
 		return false
 	}
@@ -958,12 +957,12 @@ func missingToolIDs(order []string, pending map[string]bool) []string {
 // completely, so a client asking for "max" reached the upstream with no
 // reasoning configuration at all.
 //
-// An object of type "disabled", or one that yields no level, is still
-// forwarded unchanged, and a bare "none"/"disabled" string yields nil.
+// An object of type "disabled" yields nil and is omitted; one that yields no
+// level is forwarded unchanged, and a bare "none"/"disabled" string yields nil.
 func responsesReasoning(value any) any {
 	if object, ok := value.(map[string]any); ok {
 		if jsonutil.StringAt(object, "type") == "disabled" {
-			return object
+			return nil
 		}
 		// The object is reduced to the level reasoningEffort reads from it:
 		// an "effort" or "reasoning_effort" the client stated, else the rung

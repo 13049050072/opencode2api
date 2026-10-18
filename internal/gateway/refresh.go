@@ -21,48 +21,39 @@ const (
 // it treated the outcome as a proxy-route failure; nil and #pool proxies are
 // skipped and report false. Only timeouts and connection refusals mark a
 // proxy unavailable: its keys are rebound elsewhere at once and a confirming
-// health check starts in the background. An HTTP status (a 2xx/3xx, or a
-// 4xx/5xx reported without an error) proves the route is reachable and
-// restores a proxy evicted by an earlier transient failure, so a rate-limited
-// exit is never blamed on the proxy route itself. Any other error only starts
-// the background check, which never affects the return value.
+// health check starts in the background. Any upstream HTTP status (including
+// one returned alongside a status error) proves the proxy route is reachable
+// and restores a proxy evicted by an earlier transient failure. Errors without
+// an HTTP response only start the background check, which never affects the
+// return value.
 func (g *Gateway) syncProxyResult(ctx context.Context, proxy *proxyTransport, status int, err error) bool {
 	if proxy == nil || proxy.pool {
 		return false
 	}
+	if status > 0 {
+		wasHealthy := proxy.healthy.Swap(true)
+		if !wasHealthy {
+			g.restoreProxy(proxy)
+		}
+		return false
+	}
 	if isProxyFailure(err) {
 		g.rebindFailedProxy(proxy)
-		g.verifyProxyAfterError(ctx, proxy, status)
+		g.verifyProxyAfterError(ctx, proxy, "proxy transport error", status)
 		return true
 	}
-	if status >= 200 && status < 400 {
-		wasHealthy := proxy.healthy.Swap(true)
-		if !wasHealthy {
-			g.restoreProxy(proxy)
-		}
-		return false
-	}
-	if err == nil && status >= 400 && status < 600 {
-		// Receiving an HTTP status from the upstream proves the proxy route
-		// itself is reachable; restore an unhealthy flag left by an earlier
-		// transient timeout instead of keeping the route evicted.
-		wasHealthy := proxy.healthy.Swap(true)
-		if !wasHealthy {
-			g.restoreProxy(proxy)
-		}
-		return false
-	}
 	if err != nil {
-		g.verifyProxyAfterError(ctx, proxy, status)
+		g.verifyProxyAfterError(ctx, proxy, "upstream request error", status)
 		return false
 	}
 	return false
 }
 
 // verifyProxyAfterError starts a background health check of proxy, unless one
-// is already in flight, and applies its result. status is the upstream status
-// that prompted it and only labels the log.
-func (g *Gateway) verifyProxyAfterError(ctx context.Context, proxy *proxyTransport, status int) {
+// is already in flight, and applies its result. source and status only label
+// the log; the source distinguishes a missing HTTP response from another
+// upstream request error.
+func (g *Gateway) verifyProxyAfterError(ctx context.Context, proxy *proxyTransport, source string, status int) {
 	if !proxy.checking.CompareAndSwap(false, true) {
 		return
 	}
@@ -71,7 +62,7 @@ func (g *Gateway) verifyProxyAfterError(ctx context.Context, proxy *proxyTranspo
 	checkCtx := context.WithoutCancel(ctx)
 	go func() {
 		result := g.transports.checkClaimedProxy(checkCtx, proxy, proxyHealthCheckURL, proxyHealthCheckTimeout)
-		g.applyProxyHealthResult(result, "upstream HTTP response", status)
+		g.applyProxyHealthResult(result, source, status)
 	}()
 }
 
@@ -278,7 +269,7 @@ func (g *Gateway) refreshAnonymousTier(ctx context.Context, base string) []strin
 		// configured v2 /inference origin (see anonymousUpstreams).
 		for _, upstream := range g.anonymousUpstreams() {
 			models, status, err = modelcatalog.FetchModels(refreshCtx, node.proxy.client, upstream, anonymousZenKey)
-			if err == nil {
+			if err == nil || isProxyFailure(err) {
 				break
 			}
 		}

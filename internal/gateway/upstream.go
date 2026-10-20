@@ -315,17 +315,22 @@ func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodie
 	return nil, effectiveRoute, attempts, lastErr
 }
 
+// maxAnonymousExits caps how many static proxies one request walks. Without it
+// a request that every exit rejects (403/429) scans the whole proxy list, up to
+// two legs per exit, and can spend minutes before failing over.
+const maxAnonymousExits = 8
+
 // doAnonymousUpstream walks the session's anonymous proxy cursor. Each static
-// proxy is tried at most once; rotating #pool proxies may be drawn again until
-// Retry.MaxAttempts proxies were used. For each proxy it tries the upstreams in
-// anonymousUpstreams order: the configured v2 /inference upstream
-// (Upstream.Anonymous) before the v1 lane (models.V1Base). Any failure,
-// including an HTTP error response, advances to the next upstream or proxy; a
-// proxy-route failure, or a proxy marked unhealthy, skips that proxy's
-// remaining upstreams. Only a successful response ends the anonymous phase;
-// exhausting the proxy cursor returns control to the preferred authenticated
-// tiers. It returns the last response (body still open), else the last error,
-// plus the number of attempts made.
+// proxy is tried at most once, up to maxAnonymousExits proxies; rotating #pool
+// proxies may be drawn again until Retry.MaxAttempts proxies were used. For
+// each proxy it tries the upstreams in anonymousUpstreams order: the configured
+// v2 /inference upstream (Upstream.Anonymous) before the v1 lane
+// (models.V1Base). Any failure, including an HTTP error response, advances to
+// the next upstream or proxy; a proxy-route failure, or a proxy marked
+// unhealthy, skips that proxy's remaining upstreams. Only a successful response
+// ends the anonymous phase; exhausting the proxy cursor returns control to the
+// preferred authenticated tiers. It returns the last response (body still
+// open), else the last error, plus the number of attempts made.
 func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, bodies map[config.Tier][]byte, ids identity.RequestIDs, attemptOffset int) (*http.Response, error, int) {
 	var lastResponse *http.Response
 	var lastErr error
@@ -338,7 +343,7 @@ func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, b
 	// 4xx instead of replacing it with a later tier's answer.
 	halted := false
 	cursor := g.anonymous.CursorFor(ids.Session)
-	limit := g.anonymous.Len()
+	limit := min(g.anonymous.Len(), maxAnonymousExits)
 	if g.anonymous.HasPool() && g.cfg.Retry.MaxAttempts > limit {
 		limit = g.cfg.Retry.MaxAttempts
 	}

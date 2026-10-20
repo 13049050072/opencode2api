@@ -122,11 +122,24 @@ func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Metrics) (*G
 		transports:     transports,
 		zenNodes:       zenNodes,
 		goNodes:        goNodes,
-		anonymous:      anonymousPool(cfg.Anonymous, transports, cooldown),
+		anonymous:      anonymousPool(cfg.Anonymous, transports, cooldown, anonymousBackoffFromConfig(cfg.Models.AnonymousBackoff)),
 		catalog:        catalog,
 		monitor:        monitor,
 		attemptTimeout: attemptDeadline(cfg),
 	}, nil
+}
+
+// anonymousBackoffFromConfig converts the configured hours into the breaker's
+// thresholds and durations. A nil block disables the breaker (threshold 0).
+func anonymousBackoffFromConfig(cfg *config.AnonymousBackoffConfig) anonymousBackoff {
+	if cfg == nil {
+		return anonymousBackoff{}
+	}
+	return anonymousBackoff{
+		threshold: int32(cfg.Threshold),
+		base:      time.Duration(cfg.BaseHours) * time.Hour,
+		max:       time.Duration(cfg.MaxHours) * time.Hour,
+	}
 }
 
 // Handler returns the gateway's HTTP API: the server-key authenticated /v1

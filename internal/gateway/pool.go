@@ -72,14 +72,16 @@ type anonymousNodes struct {
 	next     atomic.Uint64
 	cooldown time.Duration
 	hasPool  bool
-	// breaker stops the whole lane after repeated failures instead of poking
-	// a flagged upstream forever: after backoff.threshold consecutive failed
-	// attempts the lane pauses for backoff.base, doubling every further trip
-	// (one strike per trip) up to backoff.max. A success closes the breaker.
+	// breaker stops the whole lane after repeated failures or when every
+	// exit is under the free tier's IP block: the lane then pauses for
+	// backoff.base, doubling every further trip (one strike per trip) up to
+	// backoff.max. A success closes the breaker. probing marks the single
+	// half-open attempt allowed after the window expires.
 	backoff        anonymousBackoff
 	breakerUntil   atomic.Int64
 	breakerStrikes atomic.Int32
 	consecutive    atomic.Int32
+	probing        atomic.Bool
 }
 
 type anonymousBackoff struct {
@@ -128,8 +130,8 @@ func (p *anonymousNodes) Len() int {
 	return len(p.nodes)
 }
 
-// blockedExits reports whether any exit is currently under the free tier's IP
-// block, and no exit at all is available to serve the request.
+// blockedExits reports whether every configured exit is currently under the
+// free tier's IP block, so no exit can serve the request.
 func (p *anonymousNodes) blockedExits(now time.Time) bool {
 	if p == nil || len(p.nodes) == 0 {
 		return false
@@ -166,13 +168,42 @@ func (p *anonymousNodes) CursorFor(affinity string) anonymousCursor {
 	return anonymousCursor{pool: p, start: start}
 }
 
-// Paused reports whether the breaker currently holds the lane shut.
-func (p *anonymousNodes) Paused() bool {
+// AllowAttempt reports whether an anonymous attempt may run. An open breaker
+// refuses every attempt. Once its window expires, exactly one caller wins the
+// half-open probe, so the lane is not flooded before it is known to work
+// again; every winner must release the probe through NoteSuccess, NoteFailure,
+// NoteNeutral or ReleaseProbe.
+func (p *anonymousNodes) AllowAttempt() bool {
+	if p == nil || p.backoff.threshold < 1 {
+		return true
+	}
+	until := p.breakerUntil.Load()
+	if until == 0 {
+		return true
+	}
+	if time.Now().UnixNano() < until {
+		return false
+	}
+	return p.probing.CompareAndSwap(false, true)
+}
+
+// Open reports whether the breaker currently holds the lane shut. A half-open
+// breaker whose window has expired reports false: the lane is being probed.
+func (p *anonymousNodes) Open() bool {
 	if p == nil {
 		return false
 	}
 	until := p.breakerUntil.Load()
 	return until != 0 && time.Now().UnixNano() < until
+}
+
+// ReleaseProbe returns an unused half-open probe slot. It is safe to call
+// after any outcome has already closed or reopened the breaker.
+func (p *anonymousNodes) ReleaseProbe() {
+	if p == nil {
+		return
+	}
+	p.probing.Store(false)
 }
 
 // NoteSuccess closes the breaker and forgets the strikes.
@@ -183,13 +214,35 @@ func (p *anonymousNodes) NoteSuccess() {
 	p.consecutive.Store(0)
 	p.breakerStrikes.Store(0)
 	p.breakerUntil.Store(0)
+	p.probing.Store(false)
+}
+
+// NoteNeutral releases a half-open probe and closes the breaker without
+// counting a strike. It is used when the upstream answered the lane but
+// rejected the request itself (for example a context-length 400): the lane is
+// reachable, so it should not stay paused, and the request is not evidence of
+// an upstream outage.
+func (p *anonymousNodes) NoteNeutral() {
+	if p == nil {
+		return
+	}
+	p.consecutive.Store(0)
+	p.breakerUntil.Store(0)
+	p.probing.Store(false)
 }
 
 // NoteFailure records one failed attempt. It reports the pause window when the
-// consecutive-failure threshold trips the breaker.
+// consecutive-failure threshold trips the breaker. A failure during the
+// half-open probe reopens the breaker immediately with the next, longer window
+// instead of waiting for another threshold's worth of traffic.
 func (p *anonymousNodes) NoteFailure() (time.Duration, bool) {
 	if p == nil || p.backoff.threshold < 1 {
 		return 0, false
+	}
+	now := time.Now().UnixNano()
+	until := p.breakerUntil.Load()
+	if p.probing.Load() || (until != 0 && now >= until) {
+		return p.trip()
 	}
 	if p.consecutive.Add(1) < p.backoff.threshold {
 		return 0, false
@@ -197,10 +250,9 @@ func (p *anonymousNodes) NoteFailure() (time.Duration, bool) {
 	return p.trip()
 }
 
-// ForceOpen trips the breaker immediately. A 403 or 429 from the anonymous
-// upstream is a clear "blocked" signal (abuse detection, fingerprint gate or
-// region lock), and continuing to probe only extends the block, so it does
-// not wait for the consecutive-failure threshold.
+// ForceOpen trips the breaker immediately. The anonymous walk calls it when
+// every exit is under the free tier's IP block: another request cannot reach a
+// working exit, and probing would only extend the penalty.
 func (p *anonymousNodes) ForceOpen() (time.Duration, bool) {
 	if p == nil || p.backoff.threshold < 1 {
 		return 0, false
@@ -217,6 +269,7 @@ func (p *anonymousNodes) trip() (time.Duration, bool) {
 		pause = p.backoff.max
 	}
 	p.breakerUntil.Store(time.Now().Add(pause).UnixNano())
+	p.probing.Store(false)
 	return pause, true
 }
 

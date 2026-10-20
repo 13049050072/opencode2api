@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"opencode2api/internal/config"
+	"opencode2api/internal/httpx"
 	"opencode2api/internal/identity"
 	"opencode2api/internal/jsonutil"
 	"opencode2api/internal/models"
@@ -126,6 +127,7 @@ func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Metrics) (*G
 		catalog:        catalog,
 		monitor:        monitor,
 		attemptTimeout: attemptDeadline(cfg),
+		freeTierBlock:  time.Duration(cfg.Performance.FreeTierBlockSeconds) * time.Second,
 	}, nil
 }
 
@@ -306,6 +308,12 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 		defer cancel()
 		resp, upstreamRoute, err := g.doUpstream(requestCtx, route, bodies, ids)
 		if err != nil {
+			// The error branch never forwards the last response body, so close
+			// it here; otherwise a block or a paused lane leaks one upstream
+			// connection on every request.
+			if resp != nil && resp.Body != nil {
+				httpx.DrainAndClose(resp.Body)
+			}
 			finalTier := route.Tier
 			if meta != nil && meta.Tier != "" {
 				finalTier = config.Tier(meta.Tier)
@@ -341,6 +349,13 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			// block itself.
 			if errors.Is(err, errFreeTierIPBlocked) {
 				wire.WriteError(w, external, http.StatusServiceUnavailable, freeTierBlockedMessage, "free_tier_ip_blocked", ids.Request)
+				return
+			}
+			// The anonymous lane's circuit breaker is open. Report the pause
+			// distinctly so the operator does not look for a credential or a
+			// model problem in the upstream error.
+			if errors.Is(err, errAnonymousLanePaused) {
+				wire.WriteError(w, external, http.StatusServiceUnavailable, anonymousLanePausedMessage, "free_tier_lane_paused", ids.Request)
 				return
 			}
 			wire.WriteError(w, external, http.StatusBadGateway, "all upstream attempts failed", "upstream_error", ids.Request)

@@ -23,6 +23,17 @@ var errFreeTierIPBlocked = errors.New("free tier blocked the egress IP")
 // two ways out.
 const freeTierBlockedMessage = "OpenCode is blocking free-model traffic from the IP this gateway leaves from, so retrying now cannot succeed. Route the request through another exit or wait for the block to expire."
 
+// errAnonymousLanePaused reports that the anonymous lane's circuit breaker has
+// paused the whole lane. Unlike an upstream rejection, another exit or a retry
+// cannot succeed while the lane is paused; the caller should use an
+// authenticated tier or report the pause itself.
+var errAnonymousLanePaused = errors.New("anonymous lane paused by its circuit breaker")
+
+// anonymousLanePausedMessage is what a client receives while the circuit
+// breaker holds the anonymous lane shut. It names the cause so the operator is
+// not sent looking for a credential or model problem.
+const anonymousLanePausedMessage = "The anonymous free tier is paused after repeated upstream failures. Configure an authenticated key, wait for the pause to expire, or restart the gateway after confirming the upstream block has lifted."
+
 // freeTierBlockTTL keeps a blocked exit out of the anonymous cursor. Upstream
 // does not publish the block duration, so this is a conservative backoff: long
 // enough to stop the retry storm, short enough that an unblocked IP recovers

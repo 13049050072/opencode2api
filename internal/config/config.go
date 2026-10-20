@@ -100,11 +100,11 @@ type ModelsConfig struct {
 	// FreeOnly limits discovery and routing to free models, even when Zen or
 	// Go keys could serve paid ones. Free models may still fall back to keys.
 	FreeOnly bool `json:"free_only"`
-	// AnonymousBackoff configures a circuit breaker for the keyless lane: after
-	// Threshold consecutive failed attempts, or immediately on a 403 or 429,
-	// the lane pauses for BaseHours, doubling on every further trip up to
-	// MaxHours. An absent block leaves the lane unpaused, which is the previous
-	// behavior.
+	// AnonymousBackoff configures a circuit breaker for the keyless lane:
+	// after Threshold consecutive failed attempts, or when every exit is under
+	// the free tier's IP block, the lane pauses for BaseHours, doubling on
+	// every further trip up to MaxHours. An absent block leaves the lane
+	// unpaused, which is the previous behavior.
 	AnonymousBackoff *AnonymousBackoffConfig `json:"anonymous_backoff,omitempty"`
 }
 
@@ -171,8 +171,10 @@ type WebUIConfig struct {
 // handling: the connection pool limits (MaxConnsPerHost 0 means unlimited),
 // the dial timeout, the base cooldown after an upstream key or anonymous
 // proxy fails, and the per-attempt and first-event timeouts.
-// AttemptTimeoutSeconds 0 leaves only the request-level timeout in place, and
-// FirstEventTimeoutSeconds 0 disables the first-event wait.
+// AttemptTimeoutSeconds 0 leaves only the request-level timeout in place,
+// FirstEventTimeoutSeconds 0 disables the first-event wait, MaxAnonymousExits
+// 0 uses the built-in cap, and FreeTierBlockSeconds 0 uses the built-in
+// cool-down for an exit the free tier flagged.
 type PerformanceConfig struct {
 	MaxIdleConns             int `json:"max_idle_conns"`
 	MaxIdleConnsPerHost      int `json:"max_idle_conns_per_host"`
@@ -182,6 +184,16 @@ type PerformanceConfig struct {
 	FailureCooldownSeconds   int `json:"failure_cooldown_seconds"`
 	AttemptTimeoutSeconds    int `json:"attempt_timeout_seconds"`
 	FirstEventTimeoutSeconds int `json:"first_event_timeout_seconds"`
+	// MaxAnonymousExits bounds how many distinct static proxy exits one
+	// anonymous request may walk. Each exit may still try the v2 /inference
+	// lane and the v1 /zen lane, so the upstream request count can be twice
+	// this value; a rotating #pool entry is drawn once per retry.max_attempts
+	// instead.
+	MaxAnonymousExits int `json:"max_anonymous_exits"`
+	// FreeTierBlockSeconds is how long an exit the free tier flagged as
+	// abusive stays out of the anonymous cursor. Upstream does not publish
+	// the block duration, so the default is a conservative 15 minutes.
+	FreeTierBlockSeconds int `json:"free_tier_block_seconds"`
 }
 
 // AttemptTimeout returns the bound for a single upstream attempt. When
@@ -308,6 +320,12 @@ func Normalize(path string, cfg Config) (Config, error) {
 	}
 	if cfg.Performance.FirstEventTimeoutSeconds < 0 || cfg.Performance.FirstEventTimeoutSeconds > 86400 {
 		return Config{}, errors.New("performance.first_event_timeout_seconds must be between 0 and 86400 (0 disables the first-event timeout)")
+	}
+	if cfg.Performance.MaxAnonymousExits < 0 {
+		return Config{}, errors.New("performance.max_anonymous_exits must not be negative (0 uses the built-in cap)")
+	}
+	if cfg.Performance.FreeTierBlockSeconds < 0 {
+		return Config{}, errors.New("performance.free_tier_block_seconds must not be negative (0 uses the built-in cool-down)")
 	}
 	if cfg.Logging.Level != "debug" && cfg.Logging.Level != "info" && cfg.Logging.Level != "warn" && cfg.Logging.Level != "error" {
 		return Config{}, errors.New("logging.level must be debug, info, warn, or error")

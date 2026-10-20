@@ -303,6 +303,11 @@ func (g *Gateway) doUpstreamTiers(ctx context.Context, route models.Route, bodie
 // tiers. It returns the last response (body still open), else the last error,
 // plus the number of attempts made.
 func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, bodies map[config.Tier][]byte, ids identity.RequestIDs, attemptOffset int) (*http.Response, error, int) {
+	// The breaker holds the lane shut for an hour-scale window after repeated
+	// failures: poking a flagged upstream again would only extend the block.
+	if g.anonymous.Paused() {
+		return nil, errors.New("anonymous lane paused by its circuit breaker"), 0
+	}
 	var lastResponse *http.Response
 	var lastErr error
 	cursor := g.anonymous.CursorFor(ids.Session)
@@ -1136,8 +1141,22 @@ func (g *Gateway) observeAnonymousResult(ctx context.Context, node *anonymousNod
 	g.syncProxyResult(ctx, node.proxy, status, err)
 	if err == nil && status/100 == 2 {
 		g.anonymous.MarkSuccess(node)
+		g.anonymous.NoteSuccess()
 	} else {
 		g.anonymous.MarkFailure(node, resp, err)
+		var pause time.Duration
+		var tripped bool
+		if status == http.StatusForbidden || status == http.StatusTooManyRequests {
+			// Clearly blocked: stop probing immediately instead of letting
+			// further requests extend the upstream's abuse window.
+			pause, tripped = g.anonymous.ForceOpen()
+		} else {
+			pause, tripped = g.anonymous.NoteFailure()
+		}
+		if tripped {
+			g.logger.Warn("anonymous lane circuit breaker opened",
+				"component", "upstream", "event", "anonymous_breaker_open", "status", status, "paused_for", pause.String())
+		}
 	}
 }
 

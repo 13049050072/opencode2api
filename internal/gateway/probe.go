@@ -88,6 +88,11 @@ func probePayload(model string, protocol wire.Protocol, effort string, v1 bool) 
 // when every lane reported it; any other failure keeps the result
 // inconclusive.
 func (g *Gateway) probeFreeModel(ctx context.Context, model string) probeResult {
+	if g.anonymous.Paused() {
+		// The breaker is open; probing now would just refresh the upstream's
+		// abuse window.
+		return probeResult{reason: "anonymous_paused", attempted: false}
+	}
 	if !g.catalog.IsFreeModel(model) {
 		return probeResult{reason: "not_free"}
 	}

@@ -491,7 +491,7 @@ Node.js chỉ cần cho bước kiểm tra cú pháp JavaScript của WebUI:
 for f in webui/js/*.js webui/js/pages/*.js; do node --input-type=module --check < "$f"; done
 ```
 
-`.editorconfig`, `.gitattributes` và định dạng Go chuẩn hoá mã nguồn. CI chạy `go vet` và build với Go 1.24 và Go ở bản ổn định trên Linux/Windows, đồng thời kiểm tra định dạng Go, cú pháp WebUI và cú pháp shell của entrypoint. Gói phát hành gồm cả ba README.
+`.editorconfig`, `.gitattributes` và định dạng Go chuẩn hoá mã nguồn. CI chạy `go vet` và build với Go 1.24 và Go ở bản ổn định trên Linux/Windows, đồng thời kiểm tra định dạng Go, cú pháp WebUI và cú pháp shell của entrypoint. Gói phát hành gồm cả bốn README.
 
 ## Khắc phục sự cố
 

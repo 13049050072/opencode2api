@@ -2,31 +2,29 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [Tiếng Việt](README.vi.md) | [Italiano](README.it.md)
 
-Un gateway scritto in Go per **OpenCode Zen e Zen Go**. Espone endpoint Chat Completions, Responses e Anthropic Messages, traduce tra i protocolli nativi e gestisce upstream key e proxy.
+Gateway scritto in Go per **OpenCode Zen e Zen Go**. Espone gli endpoint Chat Completions, Responses e Anthropic Messages, traduce tra i rispettivi protocolli nativi e gestisce le chiavi upstream e i proxy.
 
-L'eseguibile include la WebUI. Per eseguire il servizio non servono runtime Node.js né database.
+L'eseguibile include la WebUI: per eseguire il servizio non servono Node.js né un database.
 
 ## Funzionalità
 
-- Risposte JSON e SSE su tutti e tre i protocolli di inferenza.
-- Testo, immagini, ragionamento, function tool, tool call e tool result; contenuto di file dove il protocollo di destinazione può rappresentarlo.
-- Pool di chiavi Zen e Go separati, preferenza di tier configurabile, retry e session affinity.
-- Accesso anonimo a Zen opzionale con la credenziale `public` di OpenCode.
-- Connessioni direct, HTTP, HTTPS, SOCKS5 e SOCKS5H, incluso un file di proxy.
-- Discovery dinamica dei modelli, metadata del protocollo nativo e cache su disco.
-- Porta di gestione dedicata con editing della configurazione, Playground, diagnostica, statistiche token e log in tempo reale.
-- Hot reload della configurazione con validazione prima di passare le nuove richieste a un gateway sostitutivo.
-- Dashboard quota abbonamento Go con percentuali rimanenti, tempi di reset e modelli disponibili.
-- Creazione, denominazione, abilitazione, disabilitazione ed eliminazione di API key locali con effetto immediato.
-- Gruppi di modelli `sota` / `sweet` con stickiness, ordine, fallback su errore, protezione dello streaming e stato persistito.
+- Risposte JSON e SSE per tutti e tre i protocolli di inferenza.
+- Testo, immagini, ragionamento, function tool, tool call e tool result; contenuti di file quando il protocollo di destinazione li supporta.
+- Pool separati di chiavi Zen e Go, preferenza del tier configurabile, retry e affinità di sessione.
+- Accesso anonimo opzionale a Zen con la credenziale `public` di OpenCode.
+- Connessioni dirette e tramite HTTP, HTTPS, SOCKS5 e SOCKS5H, anche da un file proxy.
+- Rilevamento dinamico dei modelli, metadati del protocollo nativo e cache su disco.
+- Porta di gestione separata con modifica della configurazione, Playground, diagnostica, statistiche dei token e log in tempo reale.
+- Ricaricamento a caldo della configurazione, con convalida prima di passare le nuove richieste a un gateway sostitutivo.
+- Dashboard delle quote dell'abbonamento Go con percentuali residue, orari di reset e modelli disponibili.
+- Creazione, denominazione, abilitazione, disabilitazione ed eliminazione immediata di API key locali.
+- Gruppi di modelli `sota` / `sweet` con affinità, ordinamento, failover, protezione dello streaming e stato persistente.
 
-See the [management console guide (Chinese)](docs/management.zh-CN.md) for the new pages and configuration.
-
-Vedi la [guida della console di gestione (cinese)](docs/management.zh-CN.md) per le nuove pagine e la configurazione.
+Consulta la [guida della console di gestione (in cinese)](docs/management.zh-CN.md) per informazioni sulle nuove pagine e sulla configurazione.
 
 ## Avvio rapido
 
-Scarica un binario da [GitHub Releases](https://github.com/jasonxu114514/opencode2api/releases), oppure compila con **Go 1.24 o superiore**:
+Scarica un binario da [GitHub Releases](https://github.com/jasonxu114514/opencode2api/releases) oppure compila con **Go 1.24 o superiore**:
 
 ```bash
 git clone https://github.com/jasonxu114514/opencode2api.git
@@ -35,42 +33,42 @@ cp config.example.json config.json
 go build -o opencode2api ./cmd/opencode2api
 ```
 
-Prima di avviare, modifica `config.json`:
+Prima di avviare il servizio, modifica `config.json`:
 
-1. Sostituisci `server_keys` con la tua API key locale.
-2. Fornisci chiavi Zen o Go. In alternativa, imposta `anonymous: true` e lascia vuoti entrambi gli array di chiavi upstream.
-3. Sostituisci `webui.password`. L'esempio abilita la WebUI con l'account `admin`.
+1. Sostituisci `server_keys` con una tua API key locale.
+2. Configura le chiavi Zen o Go. In alternativa, imposta `anonymous: true` e lascia vuoti entrambi gli array delle chiavi upstream.
+3. Sostituisci `webui.password`. La configurazione di esempio abilita la WebUI con l'utente `admin`.
 
 ```bash
 ./opencode2api -config config.json
 ```
 
-Su Windows usa `Copy-Item config.example.json config.json`, compila con `go build -o opencode2api.exe ./cmd/opencode2api`, poi esegui `.\opencode2api.exe -config config.json`.
+Su Windows, copia `config.example.json` in `config.json` e compila con `go build -o opencode2api.exe ./cmd/opencode2api`. Poi avvia il binario dalla directory corrente specificando `-config config.json`.
 
-Il file di esempio ascolta su `127.0.0.1:8080` per le API e `0.0.0.0:8081` per la WebUI. Apri `http://localhost:8081` sulla macchina locale. Limita l'accesso amministrativo e usa un reverse proxy HTTPS quando accedi via rete.
+La configurazione di esempio usa `127.0.0.1:8080` per l'API e `0.0.0.0:8081` per la WebUI. Apri `http://localhost:8081` in locale. Limita l'accesso alla console di gestione e usa un reverse proxy HTTPS per gli accessi dalla rete.
 
 Opzioni da riga di comando:
 
-| `-config`     | `config.json` | Configuration file path.           |
-| -------------- | -------------- | -------------------------------------------- |
-| `-web-listen` | Unset         | Override the WebUI listen address. |
+| Opzione       | Valore predefinito | Descrizione                              |
+| ------------- | ------------------ | ---------------------------------------- |
+| `-config`     | `config.json`      | Percorso del file di configurazione.     |
+| `-listen`     | Non impostato      | Sostituisce l'indirizzo di ascolto API.  |
+| `-web-listen` | Non impostato      | Sostituisce l'indirizzo di ascolto WebUI. |
 
-The configuration directory must be writable for password migration, configuration saves, and model caches.
-
-La directory di configurazione deve essere scrivibile per le modifiche della password, il salvataggio della configurazione e la cache dei modelli.
+La directory di configurazione deve essere scrivibile per migrare la password, salvare la configurazione e memorizzare le cache dei modelli.
 
 ## Docker
 
-L'immagine rilasciata è `ghcr.io/jasonxu114514/opencode2api`.
+L'immagine pubblicata è `ghcr.io/jasonxu114514/opencode2api`.
 
 ```bash
 cp config.example.json config.json
-# Configura le chiavi e sostituisci la password della WebUI prima di avviare.
+# Configura le chiavi e sostituisci la password WebUI prima dell'avvio.
 docker compose up -d
 docker compose logs -f
 ```
 
-Compose importa la configurazione dall'host nel volume `opencode2api-state` **solo al primo avvio**. Le modifiche successive vanno fatte tramite la WebUI. Per re-importare un file di configurazione modificato sull'host:
+Compose importa la configurazione dell'host nel volume `opencode2api-state` **solo al primo avvio**. Le modifiche successive vanno effettuate tramite la WebUI. Per importare di nuovo una configurazione modificata sull'host:
 
 ```bash
 docker compose cp config.json opencode2api:/var/lib/opencode2api/config.json
@@ -79,19 +77,19 @@ docker compose restart
 
 Il container esegue il servizio con un utente non privilegiato. Compose usa un filesystem root in sola lettura, un volume di stato scrivibile e un filesystem temporaneo `/tmp`.
 
-| `OPENCODE2API_VERSION`      | `latest` | Image tag. Pin a release tag for a fixed version. |
-| -------------------------------- | --------- | ----------------------------------------------------------- |
-| `OPENCODE2API_WEBUI_PORT`   | `8081`   | Host port mapped to container port 8081.          |
-| `OPENCODE2API_LISTEN`       | Unset    | Explicit container API listen override.           |
-| `OPENCODE2API_WEBUI_LISTEN` | Unset    | Explicit container WebUI listen override.         |
+| Variabile Compose           | Predefinito | Effetto                                                    |
+| --------------------------- | ----------- | ---------------------------------------------------------- |
+| `OPENCODE2API_VERSION`      | `latest`    | Tag dell'immagine; fissa un tag di release per una versione precisa. |
+| `OPENCODE2API_PORT`         | `8080`      | Porta host mappata alla porta 8080 del container.          |
+| `OPENCODE2API_WEBUI_PORT`   | `8081`      | Porta host mappata alla porta 8081 del container.          |
+| `OPENCODE2API_LISTEN`       | Non impostata | Sostituisce esplicitamente l'ascolto API nel container.   |
+| `OPENCODE2API_WEBUI_LISTEN` | Non impostata | Sostituisce esplicitamente l'ascolto WebUI nel container. |
 
-The last two variables become `LISTEN_ADDRESS` and `WEBUI_LISTEN_ADDRESS` inside the container. Empty values defer to the configuration file. While initializing a configuration, the entrypoint changes the example API address `127.0.0.1:8080` to `0.0.0.0:8080` so published ports can reach it.
+Le ultime due variabili diventano `LISTEN_ADDRESS` e `WEBUI_LISTEN_ADDRESS` nel container. I valori vuoti usano quelli del file di configurazione. Durante l'inizializzazione, l'entrypoint cambia l'indirizzo API di esempio `127.0.0.1:8080` in `0.0.0.0:8080`, così le porte pubblicate possono raggiungerlo.
 
-Le ultime due variabili diventano `LISTEN_ADDRESS` e `WEBUI_LISTEN_ADDRESS` nel container. Valori vuoti usano il file di configurazione. All'inizializzazione della configurazione, l'entrypoint cambia l'indirizzo API di esempio `127.0.0.1:8080` in `0.0.0.0:8080` affinché le porte pubblicate siano raggiungibili.
+Cambiare le porte host non cambia gli indirizzi di ascolto nel container. Se cambi la porta API interna, aggiorna anche la mappatura delle porte e l'health check dell'immagine, che usa la porta 8080.
 
-Cambiare la porta host non cambia la porta di ascolto nel container. Se cambi la porta API interna, devi aggiornare anche il mapping delle porte e l'health check dell'immagine (usa la porta 8080).
-
-Build dell'immagine in locale:
+Per creare un'immagine locale:
 
 ```bash
 docker build -t opencode2api:local .
@@ -104,31 +102,31 @@ docker run -d --name opencode2api \
   opencode2api:local
 ```
 
-Anche un `proxyfile` usato in Docker deve esistere nel container al percorso configurato.
+Anche il file `proxyfile` usato in Docker deve essere presente nel container al percorso configurato.
 
-## Uso delle API
+## Uso dell'API
 
-`server_keys` servono ad autenticare i client con questo gateway. Sono separate da `zen_keys` e `go_keys` e non vengono mai usate come credenziali upstream.
+`server_keys` autentica i client presso questo gateway. È separato da `zen_keys` e `go_keys` e non viene mai usato come credenziale upstream.
 
-Invia `Authorization: Bearer YOUR_LOCAL_API_KEY` oppure `x-api-key: YOUR_LOCAL_API_KEY`. L'health check non richiede autenticazione.
+Invia `Authorization: Bearer YOUR_LOCAL_API_KEY` oppure `x-api-key: YOUR_LOCAL_API_KEY`. Gli health check non richiedono autenticazione.
 
-| GET    | `/v1/models`           | Models that can be routed with the current configuration. |
-| ----------- | ----------------------- | ------------------------------------------------------------- |
-| GET         | `/v1/models`            | I modelli instradabili con la configurazione attuale.          |
-| POST        | `/v1/chat/completions`  | Chat Completions.                                              |
-| POST        | `/v1/responses`         | Responses.                                                     |
-| POST        | `/v1/messages`          | Anthropic Messages.                                            |
+| Metodo | Percorso               | Descrizione                                                |
+| ------ | ---------------------- | ---------------------------------------------------------- |
+| GET    | `/v1/models`           | Modelli instradabili con la configurazione corrente.      |
+| POST   | `/v1/chat/completions` | Chat Completions.                                          |
+| POST   | `/v1/responses`        | Responses.                                                 |
+| POST   | `/v1/messages`         | Anthropic Messages.                                        |
+| POST   | `/v1/systemone`        | Decisioni strutturate System One.                          |
+| GET    | `/healthz`             | Stato di disponibilità e riepilogo delle risorse.          |
 
-Discover an available model first:
-
-```bash
+Prima individua un modello disponibile:
 
 ```bash
 curl http://localhost:8080/v1/models \
   -H "Authorization: Bearer YOUR_LOCAL_API_KEY"
 ```
 
-**Chat Completions**
+Sostituisci `MODEL_ID` negli esempi seguenti con un ID restituito dalla richiesta.
 
 **Chat Completions**
 
@@ -158,7 +156,7 @@ curl http://localhost:8080/v1/messages \
   -d '{"model":"MODEL_ID","max_tokens":512,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-**System One**
+Per lo streaming, aggiungi `"stream": true` al body e usa `curl -N`. Le risposte includono `x-request-id` per la correlazione. I body delle richieste API sono limitati a 32 MiB.
 
 **System One**
 
@@ -169,23 +167,21 @@ curl http://localhost:8080/v1/systemone \
   -d '{"model":"MODEL_ID","state":"1 + 1 = 2","questions":{"arithmetic":{"type":"noul","instructions":"Is 1 + 1 equal to 2?"}}}'
 ```
 
-### Compatibility boundaries
+System One associa uno stato libero a domande tipizzate e restituisce risposte tipizzate. Il payload non condivide la struttura del bridge Chat/Responses: viene inoltrato senza modifiche e non viene mai tradotto. Questo endpoint serve solo modelli con protocollo nativo System One; anche un payload decisionale inviato a un endpoint messaggi (`/v1/chat/completions`, `/v1/responses`) viene inoltrato senza conversione. Le risposte streaming upstream vengono inoltrate così come sono, senza recupero dopo un'interruzione.
 
-Requests using the upstream's native protocol retain provider-specific fields. Requests crossing protocols pass through a common representation; not every option has an equivalent. For example, Chat JSON output constraints and `seed` are not forwarded to Anthropic Messages. Unsupported content or tool types may be rejected.
+### Limiti di compatibilità
 
-The gateway exposes the routes listed above. It does not implement embeddings, file uploads, image generation, or Responses retrieval and cancellation. It does not store conversation history; clients must supply the history or use features supported by the actual upstream.
+Le richieste che usano il protocollo nativo dell'upstream conservano i campi specifici del provider. Quelle che passano da un protocollo all'altro usano una rappresentazione comune e non tutte le opzioni hanno un equivalente. Per esempio, i vincoli JSON di Chat e `seed` non vengono inoltrati ad Anthropic Messages. Contenuti o tipi di tool non supportati possono essere rifiutati.
 
-## Routing and models
+Il gateway espone i percorsi elencati sopra. Non implementa embeddings, caricamento di file, generazione di immagini, né recupero o annullamento di Responses. Non memorizza la cronologia delle conversazioni: i client devono inviarla o usare le funzionalità supportate dall'upstream effettivo.
 
-### Model discovery
+## Instradamento e modelli
 
-The gateway refreshes Zen/Go `/v1/models` and OpenCode's [capability catalog](https://models.opencode.ai/api.json) on the configured interval. Native protocols and model limits are tracked separately for each tier. OpenCode's Zen/Go documentation is a fallback for protocol discovery.
+### Rilevamento dei modelli
 
-`models.protocols` overrides discovery:
+Il gateway aggiorna `/v1/models` di Zen/Go e il [catalogo delle capacità](https://models.opencode.ai/api.json) di OpenCode all'intervallo configurato. Protocolli nativi e limiti dei modelli sono tracciati separatamente per ogni tier. La documentazione Zen/Go di OpenCode è una fonte di ripiego per il rilevamento del protocollo.
 
-```json
-
-  "models": {
+`models.protocols` permette di sovrascrivere il rilevamento:
 
 ```json
 {
@@ -198,85 +194,85 @@ The gateway refreshes Zen/Go `/v1/models` and OpenCode's [capability catalog](ht
 }
 ```
 
-Each `/v1/models` entry also carries `cost` (USD per million tokens: `input`, `output`, `cache_read`, `cache_write`, plus OpenClaw's `cacheRead`/`cacheWrite`) when the metadata states a price. Reasoning models list their levels in `reasoning_efforts` and in OpenClaw's `compat.supportedReasoningEfforts`: `minimal` through `max`, capped at the probed ceiling when the model's effort is `auto`. A forced or probed level is reported as `default_reasoning_effort`. Cache prices appear after the next metadata refresh.
+I valori di protocollo consentiti sono `chat`, `responses` e `anthropic`. I modelli con protocolli nativi non supportati vengono esclusi dal rilevamento, a meno che non siano sovrascritti.
 
-### Anonymous access and fallback
+Costi, stato di deprecazione e limiti dei modelli provengono dall'[endpoint ufficiale dei metadati OpenCode](https://models.opencode.ai/api.json), aggiornato ogni 24 ore. Il catalogo delle capacità di OpenCode resta la fonte autorevole per i limiti di contesto e token; i metadati `limit.context`, `limit.input` e `limit.output` completano i campi mancanti. `/v1/models` espone questi limiti come `context_window`/`context_length`, `max_input` e `max_output` per client di rilevamento quali CLIProxyAPI e Pi. Ogni client HTTP attende al massimo 30 secondi per una richiesta di metadati. Gli aggiornamenti non riusciti conservano i dati esistenti.
 
-With `anonymous: true`, either condition makes a model eligible for the anonymous Zen lane:
+Quando i metadati indicano un prezzo, ogni elemento di `/v1/models` include anche `cost` (USD per milione di token: `input`, `output`, `cache_read`, `cache_write`, oltre a `cacheRead`/`cacheWrite` di OpenClaw). I modelli con ragionamento elencano i livelli in `reasoning_efforts` e in `compat.supportedReasoningEfforts` di OpenClaw: da `minimal` a `max`, limitati al livello massimo verificato quando il livello del modello è `auto`. Un livello forzato o verificato è esposto come `default_reasoning_effort`. I prezzi della cache compaiono dopo il successivo aggiornamento dei metadati.
 
-- Its ID contains `free`, case-insensitively.
+### Accesso anonimo e fallback
 
+Con `anonymous: true`, un modello può usare il canale Zen anonimo se soddisfa una delle seguenti condizioni:
 
+- Il suo ID contiene `free`, senza distinzione tra maiuscole e minuscole.
+- I metadati OpenCode indicano un costo input e output pari a zero e il modello non è deprecato.
 
+L'idoneità determina l'instradamento; l'upstream può comunque rifiutare o limitare la richiesta. Le richieste anonime usano `public` nell'header di autenticazione upstream.
 
-The routing sequence is:
+L'ordine di instradamento è:
 
-1. For an eligible model, try each available anonymous proxy once.
+1. Per un modello idoneo, prova una volta ciascun proxy anonimo disponibile.
+2. Prova i tier autenticati nell'ordine `prefer`, usando solo i tier con una chiave configurata e una route per quel modello.
+3. Applica `retry.max_attempts` separatamente a ogni tier autenticato.
 
-3. Apply `retry.max_attempts` separately to each authenticated tier.
+I tentativi anonimi non sono limitati da `retry.max_attempts`, ma condividono il timeout della richiesta. Errori di rete, autenticazione, limiti di frequenza ed errori del server possono causare la rotazione delle chiavi. Gli altri errori 4xx terminano il tier corrente; è comunque possibile provare un altro tier disponibile.
 
-Anonymous attempts are not cut short by `retry.max_attempts`, but all attempts share the request timeout. Network errors, authentication failures, rate limits, and server errors can rotate keys. Other 4xx responses end the current tier; another available tier may still be tried.
+Le richieste vengono codificate con il protocollo specifico di ogni tier. Se è attivo `performance.first_event_timeout_seconds`, una risposta SSE riuscita viene trattenuta fino al primo evento dati completo. Un timeout o una disconnessione prima dell'evento usa il budget di retry esistente per chiavi e proxy; i commenti non soddisfano il timeout. Dopo l'invio al client, lo stream non viene mai riprodotto. Il valore predefinito è `0` (disattivato); prova `15` secondi per upstream che accettano richieste ma non inviano eventi. Questo limite riguarda il primo evento, non il primo token di testo, e non si applica a System One. Gli alias di rotazione usano il timeout separato `rotation.first_output_seconds`. Un riferimento di ragionamento Responses obsoleto riconosciuto può attivare un singolo tentativo di correzione; la diagnostica con chiave selezionata non usa mai tale ripetizione.
 
-Requests are encoded for each tier's own protocol. With `performance.first_event_timeout_seconds` enabled, a successful SSE response is held until the first complete data event. A timeout or disconnect before that event uses the existing key/proxy retry budget; comments do not satisfy the timeout. Once released downstream, the stream is never replayed. The default is `0` (disabled); try `15` seconds for upstreams that accept requests but send no events. This bounds the first event, not the first text token, and does not apply to System One. Rotation aliases use their separate `rotation.first_output_seconds` timeout. A recognized stale Responses reasoning reference can trigger one repair pass; selected-key diagnostics never use that replay.
+Quando è configurato solo l'accesso anonimo, `/v1/models` espone esclusivamente i modelli idonei per quel canale.
 
-When only anonymous access is configured, `/v1/models` exposes only models eligible for that lane.
+I modelli gratuiti non richiedono una chiave Zen: con `anonymous: true` usano il canale pubblico e un'eventuale chiave configurata serve solo come fallback. Per conservare le chiavi ma esporre solo modelli gratuiti, imposta `models.free_only: true`. I modelli a pagamento scompaiono da `/v1/models`, le richieste dirette vengono rifiutate e gli alias di rotazione mantengono solo i membri gratuiti; questi ultimi possono comunque usare le chiavi configurate come fallback.
 
-Free models never need a Zen key: with `anonymous: true` they are served by the public lane, and a configured key is only their fallback. To keep keys but expose free models only, set `models.free_only: true`. Paid models then disappear from `/v1/models`, direct requests for them are rejected, and rotation aliases keep only free members; free models may still fall back to the configured keys.
+### Disponibilità dei modelli gratuiti
 
-### Free model availability
+Il gateway verifica con una breve richiesta e il protocollo nativo i modelli il cui ID contiene `free` (senza distinzione tra maiuscole e minuscole) oppure i cui metadati indicano un costo input/output pari a zero e che non sono deprecati. Prova prima il canale anonimo abilitato, poi una chiave Zen configurata. Una risposta valida e completa su uno dei canali mantiene il modello abilitato. Il modello viene disabilitato nel rilevamento e nell'instradamento solo quando tutti i canali provati indicano esplicitamente che non esiste o è stato ritirato. Errori di autenticazione, limiti di frequenza, timeout, errori di trasporto, risposte 5xx e risposte malformate non sono conclusivi: non disabilitano nuovi modelli e vengono verificati di nuovo dopo un'ora. I controlli non alterano cooldown, stato dei proxy o statistiche delle richieste di produzione, ma raggiungono comunque l'upstream e possono consumare la quota gratuita.
 
-The gateway probes models whose IDs contain `free` (case-insensitive), or whose metadata reports zero input/output cost without deprecation, with a short request using its native protocol. It tries the enabled anonymous lane first and then one configured Zen Key. A valid completed response on either lane keeps the model enabled; the model is disabled in discovery and routing only when every attempted lane explicitly reports that the model does not exist or has been retired. Authentication errors, rate limits, timeouts, transport errors, 5xx responses, and malformed replies are inconclusive: they do not create a new disable, and are checked again in one hour. Probe traffic does not alter production key/proxy cooldowns or request statistics. It still reaches the upstream and may consume its free allowance.
+I modelli System One usano una domanda nativa `noul` che chiede se 1 + 1 è uguale a 2; non ricevono mai payload chat/tool. Il rilevamento dei modelli include `native_protocol` e `supported_endpoints`; gli alias di rotazione sono elencati solo quando esistono chiavi Go e modelli idonei. Le disabilitazioni legacy della versione v1.3.6 vengono cancellate al caricamento e verificate subito, perché quei controlli usavano ID sessione non validi.
 
-System One models use a native `noul` question asking whether 1 + 1 equals 2; they are never sent chat/tool payloads. Model discovery includes `native_protocol` and `supported_endpoints`; rotation aliases are listed only when Go keys and eligible models exist. Legacy v1.3.6 disables are cleared on load and scheduled for immediate recheck because those probes used invalid session IDs.
+Gli intervalli sono fissi: i modelli abilitati vengono verificati ogni **1 ora**, quelli confermati non disponibili ogni **24 ore**. Una verifica inconclusiva di un modello disabilitato conserva il motivo originale e pianifica un nuovo tentativo dopo 24 ore. Una verifica riuscita riabilita il modello automaticamente. La pagina WebUI **Disponibilità modelli gratuiti** può ripristinarlo subito, mettendolo sotto controllo manuale: resta abilitato e viene escluso dai controlli automatici, così i risultati successivi non possono sovrascrivere la scelta. Usa l'interruttore per modello **manuale/automatico** nella stessa pagina per riprendere i controlli automatici; il tick successivo dello scheduler pianifica una verifica. I record `manually_enabled` delle versioni precedenti migrano al controllo manuale al caricamento. Un controllo già in corso non può annullare un ripristino manuale. I modelli senza un canale Zen/anonimo utilizzabile o senza un protocollo di inferenza supportato vengono ignorati.
 
-The intervals are fixed: enabled models are checked every **1 hour**, models confirmed unavailable every **24 hours**. An inconclusive due recheck of a disabled model preserves its original disable reason and schedules another retry in 24 hours. A successful recheck restores the model automatically. The WebUI **Free model availability** page can restore it immediately, which puts the model under manual control: it stays enabled and is excluded from automatic probing, so later probe results cannot overwrite it. Use the per-model **manual/automatic toggle** on the same page to return it to automatic probing; the next scheduler pass then schedules a probe. Records left as `manually_enabled` by older versions migrate to manual control on load. An in-flight probe cannot undo a manual restore. Models without a usable Zen/anonymous lane, or without a supported inference protocol, are skipped.
+Il controllo manuale sospende anche il rilevamento dei livelli per `reasoning.effort=auto`; i livelli appresi smettono di essere forzati dopo due ore senza verifica. Tornando al controllo automatico, il rilevamento può riprendere.
 
-Manual control also pauses effort discovery for `reasoning.effort=auto`; learned levels stop being forced after two hours without verification. Returning to automatic control allows effort discovery to resume.
+Lo stato persiste tra i riavvii in `config.json.<upstream-fingerprint>.availability.json`, separato per URL upstream Zen. Lo scheduler in background verifica ogni minuto i modelli in scadenza, ignora quelli sotto controllo manuale e controlla gli altri in sequenza, con un timeout di 60 secondi per canale. Se non sono disponibili canali, non avviene alcuna disabilitazione automatica.
 
-State survives restarts in `config.json.<upstream-fingerprint>.availability.json`, separated by the Zen upstream URL. The background scheduler checks for due models once per minute, skips manually controlled models, and probes the rest sequentially, with a 60-second timeout per lane. No channels available means no automatic disable.
+Endpoint di amministrazione (richiede l'accesso; le scritture richiedono anche CSRF): `GET /api/models/availability`, `POST /api/models/restore` con `{"model":"MODEL_ID"}` (ripristina e attiva il controllo manuale) e `POST /api/models/manual` con `{"model":"MODEL_ID","manual":true|false}` per passare dal controllo manuale a quello automatico e viceversa.
 
-Administration endpoints (login required; writes also require CSRF): `GET /api/models/availability`, `POST /api/models/restore` with `{"model":"MODEL_ID"}` (restores and takes manual control), and `POST /api/models/manual` with `{"model":"MODEL_ID","manual":true|false}` to switch between manual and automatic control.
+### Sessioni e proxy
 
-### Sessions and proxies
+Inizialmente le chiavi vengono distribuite tra i proxy. Il traffico reale può avviare controlli dei proxy, riassegnazioni delle chiavi e cooldown. I proxy non integri vengono ricontrollati ogni 15 minuti tramite Cloudflare Trace.
 
-Keys are initially spread across proxies. Real traffic can trigger proxy checks, key rebinding, and cooldowns. Unhealthy proxies are rechecked every 15 minutes against Cloudflare trace.
+Un hash di sessione stabile seleziona la chiave o il proxy anonimo preferito. Invia un `x-session-id` esplicito per separare conversazioni indipendenti. Il gateway accetta anche `x-opencode-session`, `x-session-affinity`, `conversation-id`, `conversation_id` e `metadata.session_id`.
 
-### Session và proxy
+Senza un ID esplicito, il primo messaggio dell'utente viene usato come seme. Conversazioni che iniziano con lo stesso contenuto possono quindi condividere l'affinità. Modificare i membri del pool può cambiare il nodo selezionato.
 
-Without an explicit ID, the first user message is used as a seed. Conversations beginning with the same content can therefore share affinity. Changing pool membership can change the selected node.
+I cooldown aumentano esponenzialmente fino a otto volte `performance.failure_cooldown_seconds`; viene rispettato anche un valore `Retry-After` più lungo. Se tutte le chiavi autenticate sono in cooldown, l'instradamento può provare quella il cui cooldown termina prima. I nodi anonimi ancora in cooldown vengono ignorati.
 
-Cooldowns grow exponentially up to eight times `performance.failure_cooldown_seconds`, and a longer `Retry-After` is honored. If every authenticated key is cooling down, routing may try the key whose cooldown ends first. Anonymous nodes still in cooldown are skipped.
+## Riferimento della configurazione
 
-## Configuration reference
+Consulta [config.example.json](config.example.json) per una configurazione iniziale completa. Il JSON supporta i commenti `//` e `/* ... */`; i campi sconosciuti e i valori non validi vengono rifiutati.
 
-See [config.example.json](config.example.json) for a complete starting configuration. JSON supports `//` and `/* ... */` comments; unknown fields and invalid values are rejected.
+### Chiavi, indirizzi di ascolto e instradamento
 
-### Keys, listeners, and routing
+| Campo                       | Predefinito / requisito                                                       |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `listen`                    | `127.0.0.1:8080`.                                                             |
+| `server_keys`               | È richiesta almeno una chiave locale.                                        |
+| `zen_keys`, `go_keys`       | È richiesta una chiave upstream, salvo accesso anonimo abilitato.            |
+| `anonymous`                 | `false`.                                                                      |
+| `prefer`                    | `go`; accetta `go` o `zen`.                                                   |
+| `upstream.zen`              | `https://opencode.ai/inference/openai`.                                       |
+| `upstream.go`               | `https://opencode.ai/zen/go`.                                                 |
+| `proxies`                   | Fallback a `["direct"]` se entrambe le fonti proxy sono vuote.              |
+| `proxyfile`                 | Opzionale; i percorsi relativi sono risolti accanto al file di configurazione. |
+| `models.refresh_seconds`    | `300`; minimo 1.                                                              |
+| `models.protocols`          | `{}`; override del protocollo nativo per modello.                             |
+| `models.free_only`          | `false`; mostra e instrada solo modelli gratuiti, anche con chiavi Zen o Go.  |
+| `reasoning.effort`          | Vuoto (disattivato); `minimal`, `low`, `medium`, `high`, `xhigh`, `max` o `none`. |
+| `reasoning.effort_by_model` | `{}`; override di `reasoning.effort` per modello.                             |
 
-Vedi [config.example.json](config.example.json) per una configurazione di partenza completa. Il JSON supporta i commenti `//` e `/* ... */`; campi sconosciuti e valori non validi vengono rifiutati.
+### Livello di ragionamento forzato
 
-### Chiavi, porta di ascolto e instradamento
-
-| `zen_keys`, `go_keys`       | At least one upstream key is required unless anonymous access is enabled.   |
-| -------------------------- | ---------------------------------------------------------------- |
-| `listen`                   | `127.0.0.1:8080`.                                                |
-| `upstream.zen`              | `https://opencode.ai/inference/openai`.                                                  |
-| `upstream.go`               | `https://opencode.ai/zen/go`.                                               |
-| `anonymous`                | `false`.                                                         |
-| `proxyfile`                 | Optional; relative paths resolve beside the configuration file.             |
-| `upstream.zen`             | `https://opencode.ai/inference/openai`.                          |
-| `upstream.go`              | `https://opencode.ai/zen/go`.                                    |
-| `models.free_only`          | `false`; expose and route only free models, even with Zen or Go keys.       |
-| `reasoning.effort`          | Empty (off); `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `none`. |
-| `reasoning.effort_by_model` | `{}`; per-model overrides of `reasoning.effort`.                            |
-
-### Forced thinking level
-
-`reasoning.effort` sets the thinking level used upstream when a request does not
-
-### Tier di ragionamento forzato
-
-`thinking.budget_tokens` can only be approximated by the Chat and Responses
+`reasoning.effort` imposta il livello usato dall'upstream quando la richiesta non ne specifica uno; `reasoning.effort_by_model` lo sovrascrive per gli ID indicati. Si applica a tutti e tre i protocolli e in entrambe le direzioni di conversione. È particolarmente utile per il traffico tra protocolli: `thinking.budget_tokens` di Anthropic può essere approssimato solo dalle interfacce Chat e Responses, quindi un livello forzato può raggiungere un livello che il solo budget non esprime.
 
 ```json
 {
@@ -287,28 +283,28 @@ Vedi [config.example.json](config.example.json) per una configurazione di parten
 }
 ```
 
+Un livello specificato esplicitamente dal client ha sempre la precedenza. L'impostazione sostituisce solo un livello non richiesto: assente oppure derivato da `thinking.budget_tokens`. Usa `"none"` per rimuovere il ragionamento dalle richieste che non lo richiedono.
 
+I livelli vengono riportati fedelmente in entrambe le direzioni. Un `output_config.effort` esplicito sopravvive alla conversione e non viene sovrascritto da un blocco `thinking`; `budget_tokens` conserva il proprio livello (`8192` corrisponde a `high`, `32000` a `xhigh`), e la destinazione Responses trasporta il livello in `reasoning.effort`.
 
-nobody asked for: an absent one, or one derived from `thinking.budget_tokens`.
+Il Centro configurazione WebUI espone gli stessi campi predefiniti e per modello. L'API di gestione li restituisce in `reasoning` da `GET /api/config` e accetta l'oggetto con `PUT /api/config`; se il client omette il campo, il valore esistente resta invariato, mentre un oggetto vuoto lo cancella.
 
+Le voci proxy accettano `direct`, `http://`, `https://`, `socks5://` e `socks5h://`, incluse credenziali nell'URL. L'elenco inline viene unito a `proxyfile` e deduplicato mantenendo l'ordine.
 
-
-`output_config.effort` survives conversion instead of being shadowed by a
-
-`xhigh`, so the two stay distinguishable), and the Responses target carries the
+Un file proxy contiene una voce per riga e supporta righe vuote e commenti:
 
 ```text
-# Proxy chính
+# Proxy principale
 http://user:password@127.0.0.1:7890
-the object in `PUT /api/config`; clients that omit the field keep the existing
+socks5://127.0.0.1:1080  # Proxy di riserva
 direct
 ```
 
+I marcatori di commento sono `#`, `;` e `//` all'inizio della riga o dopo uno spazio.
 
+#### Pool di proxy rotanti
 
-#### Pool proxy rotante
-
-# Primary proxy
+Aggiungi il suffisso `#pool` (o il prefisso `pool+`) a una voce per indicare un pool di proxy rotante come [Resin](https://github.com/Resinat/Resin), in cui ogni nuova connessione TCP esce da un IP diverso:
 
 ```text
 http://127.0.0.1:7890#pool
@@ -316,69 +312,69 @@ socks5://127.0.0.1:1080#pool
 pool+http://127.0.0.1:7891
 ```
 
-#### Rotating proxy pools
+Una voce pool viene gestita diversamente da un proxy statico:
 
-| Hành vi               | Proxy tĩnh                                                     | Mục `#pool`                                                              |
-| --------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-```text
-http://127.0.0.1:7890#pool
-socks5://127.0.0.1:1080#pool
-pool+http://127.0.0.1:7891
+| Comportamento             | Proxy statico                                                       | Voce `#pool`                                                               |
+| ------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Riutilizzo connessioni    | Keep-alive e multiplexing HTTP/2 (impostazioni `performance.*`)     | Nuovo tunnel TCP + CONNECT per richiesta (`DisableKeepAlives`, senza HTTP/2) |
+| Cooldown dopo un errore   | Backoff esponenziale 15–120 s, esteso da `Retry-After`              | Nessuno: la richiesta successiva usa un nuovo IP di uscita                 |
+| Esclusione per stato      | Segnalato come non integro, chiavi riassegnate, verifica ogni 15 min | Mai escluso; il controllo di integrità viene saltato                       |
+| Retry del canale anonimo  | Al massimo un tentativo per proxy configurato                       | Fino a `retry.max_attempts`, ruotando la voce del pool                     |
 
-
+Usalo quando l'endpoint dietro l'URL esegue già la rotazione e i singoli IP di uscita sono soggetti a limiti o instabilità. Il gateway tratterà ogni tentativo come un endpoint nuovo invece di fissare la conversazione a un solo IP. Basta una voce `#pool`: non serve elencare decine di indirizzi. Le voci statiche mantengono il comportamento del pool di connessioni descritto sotto.
 
 ### Timeout e pool di connessioni
 
-| ------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| ---------------------------------------- | -------- | ----------------------------------------------------------- |
-| Failure cooldown          | 15s–120s exponential backoff, inflated by `Retry-After`             | None: the next request simply draws a new exit IP                             |
-| Health eviction           | Marked unhealthy, keys rebound, rechecked every 15 minutes          | Never evicted; the health check is skipped entirely                           |
-| Anonymous lane retries    | At most one attempt per configured proxy                            | Up to `retry.max_attempts`, cycling the pool entry                            |
+| Campo                                      | Predefinito | Descrizione                                                |
+| ------------------------------------------ | ----------- | ---------------------------------------------------------- |
+| `retry.max_attempts`                       | `3`         | Tentativi per tier autenticato, incluso il primo.         |
+| `retry.timeout_seconds`                    | `300`       | Timeout totale di inferenza, compreso lo stream.          |
+| `performance.attempt_timeout_seconds`      | `0`         | Limite per tentativo; 0 usa il timeout della richiesta.   |
+| `performance.connect_timeout_seconds`      | `5`         | Timeout per stabilire la connessione.                     |
+| `performance.failure_cooldown_seconds`     | `15`        | Cooldown di errore di base.                               |
+| `performance.max_idle_conns`               | `2048`      | Limite connessioni inattive per trasporto proxy.           |
+| `performance.max_idle_conns_per_host`      | `256`       | Limite connessioni inattive per host e trasporto.          |
+| `performance.max_conns_per_host`           | `0`         | Limite connessioni per host; 0 significa illimitato.       |
+| `performance.idle_conn_timeout_seconds`    | `120`       | Durata delle connessioni inattive.                        |
 
-Use it when the endpoint behind the URL already performs the rotation and the pool's own exit IPs are individually rate-limited or flaky; the gateway then treats each attempt as a fresh endpoint instead of pinning the conversation to one exit. A single `#pool` entry is enough — you no longer need to list dozens of exits. Static entries keep the pooling behavior described below.
-
-### Timeouts and connection pools
-
-| Field                                   | Default | Meaning                                                |
-
-| `retry.max_attempts`                    | `3`     | Attempts per authenticated tier, including the first.  |
+Il timeout degli header per tentativo è limitato dal timeout della richiesta. Impostalo sotto il timeout totale se vuoi lasciare tempo per il fallback in caso di upstream lento. La scadenza del contesto della richiesta interrompe i tentativi successivi senza penalizzare chiavi o proxy non usati.
 
 ### Log e gestione
 
-| `performance.failure_cooldown_seconds`  | `15`    | Base failure cooldown.                                 |
-| ----------------------------- | ------------------------------------------------------- |
-| `performance.max_idle_conns_per_host`   | `256`   | Idle connection limit per host and transport.          |
-| `logging.ring_size`           | `2000`; khoảng 100–50.000.                              |
-| `performance.idle_conn_timeout_seconds` | `120`   | Idle connection lifetime.                              |
-
+| Campo                         | Predefinito / requisito                                  |
+| ----------------------------- | -------------------------------------------------------- |
+| `logging.level`               | `info`; accetta `debug`, `info`, `warn`, `error`.        |
+| `logging.ring_size`           | `2000`; intervallo 100–50.000.                           |
+| `logging.dump_request_bodies` | `false`; richiede il livello `debug` per emettere i body in uscita. |
+| `webui.enabled`               | `false` se omesso; la configurazione di esempio usa `true`. |
 | `webui.listen`                | `0.0.0.0:8081`.                                          |
+| `webui.username`              | Obbligatorio con WebUI attiva; l'esempio usa `admin`.    |
+| `webui.password`              | Password iniziale, almeno 10 caratteri.                 |
+| `webui.password_hash`         | Hash Argon2id generato, sostituisce la password in chiaro. |
+| `webui.session_ttl_minutes`   | `720`; intervallo 5–10.080.                              |
 
-### Logging and management
+All'avvio, la password iniziale viene sottoposta a hash e rimossa dalla configurazione. Il backup che contiene la password in chiaro viene eliminato. Proteggi i file di configurazione e i backup: le chiavi upstream e le credenziali proxy restano segreti necessari.
 
-| `webui.session_ttl_minutes`   | `720`; khoảng 5–10.080.                                 |
+I dump dei body sono opzionali e limitati a 64 KiB per body preparato. I segreti configurati vengono oscurati, ma il contenuto delle conversazioni può essere sensibile.
 
-| `logging.level`               | `info`; accepts `debug`, `info`, `warn`, `error`.             |
+## WebUI e diagnostica
 
-| `logging.dump_request_bodies` | `false`. Requires `debug` logging to emit outbound bodies.    |
+Il listener di gestione serve la UI e le route `/api/*`. L'autenticazione usa un account amministratore, sessioni lato server, cookie HttpOnly/SameSite, controlli CSRF per le scritture e limitazione dei tentativi di accesso.
 
-| `webui.listen`                | `0.0.0.0:8081`.                                               |
+| Route di gestione                                  | Scopo                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `POST /api/auth/login`                             | Accesso e ottenimento del cookie di sessione e del token CSRF.         |
+| `GET /api/auth/session`, `POST /api/auth/logout`   | Verifica o chiusura della sessione.                                    |
+| `GET /api/config`, `PUT /api/config`               | Lettura della configurazione mascherata o applicazione delle modifiche. |
+| `POST /api/config/reload`                          | Ricaricamento del file dal disco.                                      |
+| `POST /api/config/reveal`                          | Visualizzazione dei segreti configurati dopo verifica della password.  |
+| `PUT /api/account`                                 | Aggiornamento delle credenziali dopo la verifica; invalida le sessioni. |
+| `GET /api/monitor`                                 | Statistiche su richieste, token, upstream e risorse.                    |
+| `GET /api/debug/models`                            | Route dei modelli, impronte delle chiavi e diagnostica dei metadati.   |
+| `POST /api/debug/inference`                        | Esecuzione di una richiesta Playground.                                |
+| `GET /api/logs`, `GET /api/logs/stream`            | Log recenti o iscrizione SSE in tempo reale.                            |
 
-| `webui.password`              | Bootstrap password with a minimum length of 10.               |
-
-| `webui.session_ttl_minutes`   | `720`; range 5–10,080.                                        |
-| ---------------------------------------------- | --------------------------------------------------------------- |
-On startup, a bootstrap password is hashed and removed from the configuration. The backup containing that bootstrap plaintext is deleted. Keep configuration files and backups private: upstream keys and proxy credentials remain necessary configuration secrets.
-
-Body dumps are opt-in and capped at 64 KiB per prepared body. Configured secrets are redacted, but conversation content may still be sensitive.
-
-## WebUI and diagnostics
-
-The management listener serves the UI and `/api/*` routes. Authentication uses one administrator account, server-side sessions, HttpOnly/SameSite cookies, CSRF checks for writes, and login throttling.
-
-| Management route                                 | Purpose                                                               |
-| ------------------------------------------------ | --------------------------------------------------------------------- |
-
-| `GET /api/auth/session`, `POST /api/auth/logout` | Inspect or end the session.                                           |
+Le richieste Playground richiedono una sessione e `X-CSRF-Token`; il limite è 12 al minuto per IP client:
 
 ```json
 {
@@ -391,91 +387,91 @@ The management listener serves the UI and `/api/*` routes. Authentication uses o
 }
 ```
 
-{
+Il server forza `stream: false`. Usa `{"mode":"selected","tier":"zen","id":"KEY_FINGERPRINT"}` per provare una chiave specifica di `/api/debug/models`. Una richiesta con chiave selezionata esegue al massimo un tentativo upstream, senza accesso anonimo, rotazione delle chiavi, fallback di tier o ripetizione del ragionamento.
 
-  "key": { "mode": "auto" },
+**Le diagnostiche automatiche e quelle con chiave selezionata preservano cooldown, conteggi di errore, stato dei proxy e associazioni delle chiavi di produzione.** Inviano comunque richieste reali all'upstream, possono consumare la quota del provider e compaiono nel monitoraggio.
 
-    "model": "MODEL_ID",
+Al termine, l'endpoint di gestione restituisce HTTP 200 e il risultato effettivo nei campi `ok`, `http_status`, `request_id`, `route` e `response`. I risultati con chiave selezionata includono anche `selected_key` e `key_test`: `usable`, `rejected`, `rate_limited`, `transport_error`, `upstream_error`, `request_error` o `unavailable`. Input di gestione non validi, errori di autenticazione o CSRF e richieste limitate mantengono i rispettivi codici HTTP di errore.
 
 ### Lingua dell'interfaccia
 
-```
+La WebUI carica le traduzioni da `webui/js/i18n.js`. Include **简体中文** (predefinito), **English**, **Tiếng Việt** e **Italiano**. I testi originali in cinese semplificato restano in `index.html` e `webui/js/` e vengono usati come fallback per ogni stringa non tradotta; aggiungere una lingua non modifica quindi il testo originale.
 
-The server forces `stream: false`. Use `{"mode":"selected","tier":"zen","id":"KEY_FINGERPRINT"}` to test a specific key from `/api/debug/models`. A selected request makes at most one upstream attempt, without anonymous access, key rotation, tier fallback, or reasoning replay.
+- Il selettore si trova nella barra superiore e nella scheda di accesso.
+- La scelta è salvata in `localStorage` con la chiave `opencode2api.ui.lang`.
+- Il cambio lingua aggiorna i testi statici (`data-i18n`, `data-i18n-attr`) e quelli generati da JavaScript senza ricaricare la pagina.
+- Date e orari seguono la lingua selezionata.
 
-**Both automatic and selected diagnostics preserve production key cooldowns, failure counts, proxy health, and bindings.** They still make real upstream requests, can consume provider quota, and appear in monitoring.
-
-
-
+Per aggiungere una lingua, inserisci un blocco in `DICTIONARY` in `webui/js/i18n.js`, registra il codice in `SUPPORTED`, `LABELS`, `FLAGS` e `DATE_LOCALES` e aggiungilo alla catena di rilevamento `browserLocale`.
 
 ### Salvataggio e ricaricamento
 
-Il server valida una configurazione candidata e costruisce un gateway sostitutivo prima di salvare e passare. Validazione o salvataggio falliti lasciano il gateway attivo invariato. Le richieste già in corso continuano sul gateway originale.
+Il server convalida una configurazione candidata e prepara un gateway sostitutivo prima di salvare e attivare le modifiche. Se la convalida o il salvataggio falliscono, il gateway attivo resta invariato. Le richieste già in corso continuano sul gateway originale.
 
-Chiavi, proxy, URL upstream, impostazioni di retry, impostazioni modello, log e preferenze di instradamento si applicano subito alle nuove richieste. Le modifiche a `listen`, `webui.listen` o `webui.enabled` richiedono il riavvio del processo. Il JSON salvato è normalizzato; i commenti non vengono conservati.
+Chiavi, proxy, URL upstream, retry, impostazioni dei modelli, log e preferenze di instradamento si applicano subito alle nuove richieste. Le modifiche a `listen`, `webui.listen` o `webui.enabled` richiedono il riavvio del processo. Il JSON salvato è normalizzato e non conserva i commenti.
 
-- Dates and times follow the selected locale as well.
+## Monitoraggio e persistenza
 
-Il risultato della richiesta descrive l'inferenza completata. Una risposta SSE fallita o un flusso troncato viene comunque conteggiata come errore anche se HTTP 200 è già stato inviato; il suo risultato è `stream_error`. L'annullamento del client viene registrato come `client_canceled`. La WebUI mostra questi risultati accanto al codice di stato HTTP.
+L'esito di una richiesta descrive l'inferenza completata. Una risposta SSE non riuscita o uno stream troncato viene conteggiato come errore anche se HTTP 200 è già stato inviato; l'esito è `stream_error`. L'annullamento da parte del client viene registrato come `client_canceled`. La WebUI mostra questi esiti insieme al codice di stato HTTP.
 
-Il record del **tentativo** upstream misura lo scambio HTTP fino alla ricezione dell'header della risposta. Il suo successo e la latenza sono separati dal completamento dell'intero body JSON o del flusso.
+I record dei **tentativi** upstream misurano lo scambio HTTP fino alla ricezione degli header della risposta. Esito e latenza sono separati dal completamento dell'intero body JSON o dello stream.
 
-Le statistiche dei token usano solo l'usage riportato. I token di input includono lettura e scrittura della cache; i token cache separati contano le letture della cache. L'usage mancante non viene stimato, e la copertura indica quante richieste di inferenza instradate riportano usage. `usage.server_keys` separa richieste e token per server key locale con cui il caller si è autenticato (il suo fingerprint, come mostrato in `/api/api-keys`); il traffico Playground è conteggiato sotto `playground`.
+Le statistiche dei token usano solo i valori riportati. I token input includono letture e scritture della cache; i token cache separati contano le letture. I valori mancanti non vengono stimati; la copertura indica quante richieste di inferenza instradate riportano l'utilizzo. `usage.server_keys` suddivide richieste e token in base alla chiave server locale usata per l'autenticazione (la relativa impronta è mostrata in `/api/api-keys`); il traffico Playground è conteggiato sotto `playground`.
 
-Keys, proxies, upstream URLs, retry settings, model settings, logging, and routing preferences apply to new requests immediately. Changes to `listen`, `webui.listen`, or `webui.enabled` require a process restart. Saved JSON is normalized; comments are not retained.
-| -------------------------------------------------------- | -------------------------------------------------------------- |
-## Monitoring and persistence
-| Dettagli request e tentativi                                | Ultima ora, al massimo 10.000 request e 20.000 tentativi; l'API restituisce al massimo 500 voci per tipo. |
-| Ring log live                                         | Memoria del processo; dimensione definita da `logging.ring_size`. |
-| Log strutturati                                            | JSON su stdout; raccogli esternamente per conservazione a lungo termine.          |
-Upstream **attempt** records measure the HTTP exchange through receipt of response headers. Their success and latency are separate from completion of the full JSON body or stream.
-| Cache catalogo modelli                                      | `config.json.models.catalog.json`.                             |
-| Cache prezzi/deprecazione                                         | `config.json.models.dev.json`.                                 |
+| Dati                                                     | Memorizzazione / conservazione                                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Sessioni, metriche, totali token, ultimo risultato Playground | Memoria del processo; cancellati al riavvio.                                    |
+| Dettagli di richieste e tentativi                        | Ultima ora, massimo 10.000 richieste e 20.000 tentativi; API fino a 500 per tipo.   |
+| Buffer circolare dei log                                 | Memoria del processo; dimensione impostata da `logging.ring_size`.                  |
+| Log strutturati                                          | JSON su stdout; raccoglili esternamente per conservarli.                            |
+| Configurazione e versione precedente                     | `config.json` e `config.json.bak`.                                                   |
+| Cache del catalogo modelli                               | `config.json.models.catalog.json`.                                                  |
+| Cache prezzi/deprecazioni                                | `config.json.models.dev.json`.                                                      |
 
-Il nome del file di cache si basa sul percorso di configurazione effettivo. I contatori di età si basano sull'età del processo corrente. Le istanze non condividono session o stato di monitoraggio.
+I nomi dei file di cache dipendono dal percorso effettivo della configurazione. I contatori di durata si riferiscono al processo corrente. Le istanze non condividono sessioni o stato di monitoraggio.
 
 ### Health check
 
-`/healthz` non incrementa i contatori di monitoraggio e non genera richieste di rete. Riporta il conteggio delle risorse senza chiavi o indirizzi proxy.
+`/healthz` non incrementa i contatori di monitoraggio né avvia richieste di rete. Riporta il numero di risorse senza esporre chiavi o indirizzi proxy.
 
-- HTTP 503: catalogo iniziale ancora in attesa, nessun modello instradabile con la configurazione attuale, oppure nessun proxy sano.
-- HTTP 200: pronto, anche se la cache del catalogo utilizzabile è vecchia. In quel caso lo stato del modello è `stale` e lo stato complessivo è `degraded`.
+- HTTP 503: catalogo iniziale ancora in attesa, nessun modello instradabile con la configurazione attuale oppure nessun proxy integro.
+- HTTP 200: servizio pronto, anche se una cache del catalogo utilizzabile è obsoleta. In questo caso lo stato del modello è `stale` e lo stato complessivo è `degraded`.
 
-La soglia di vecchiaia è il doppio di `models.refresh_seconds`, minimo 60 secondi. La readiness è un controllo di liveness e risorse; non verifica che la chiave upstream accetterà la prossima inferenza.
+La soglia di obsolescenza è il doppio di `models.refresh_seconds`, con un minimo di 60 secondi. Il controllo verifica rilevamento e risorse; non verifica se una chiave upstream accetterà la prossima inferenza.
 
+## Sviluppo
 
-
-Il codice Go è organizzato in package per responsabilità. Il comando coordina il servizio; i package di implementazione stanno sotto `internal/`.
+Il codice Go è organizzato in package per responsabilità. Il comando collega i componenti del servizio; i package di implementazione si trovano sotto `internal/`.
 
 ```text
 cmd/
-- HTTP 200: ready, including when a usable catalog cache is stale. In that case the model status is `stale` and overall status is `degraded`.
+  opencode2api/main.go    Flag CLI, avvio e arresto graduale
 internal/
-The staleness threshold is twice `models.refresh_seconds`, with a minimum of 60 seconds. Readiness is a discovery and resource check; it does not verify that an upstream key will accept the next inference.
-  buildinfo/             Phiên bản dùng chung cho health và endpoint quản trị
-## Development
-
-Go source is organized into packages by responsibility. The command wires the service together; implementation packages live under `internal/`.
-  identity/              Request ID và session affinity
-```text
-cmd/
-  opencode2api/main.go    CLI flags, startup, and graceful shutdown
-internal/
+  admin/                  API di gestione, sessioni di accesso e Playground
+  buildinfo/              Versione condivisa da health check e API di gestione
+  config/                 Configurazione, persistenza, password e oscuramento
+  gateway/                Instradamento HTTP, retry, pool, aggiornamenti e runtime
+  httpx/                  Risposte HTTP condivise, gestione dei body e header
+  identity/               ID richiesta e affinità di sessione
+  jsonutil/               Accesso e decodifica JSON
+  models/                 Catalogo modelli, capacità, prezzi e cache
+  protocol/               Conversione richieste/risposte e parsing/emissione SSE
+  telemetry/              Tracciamento richieste, metriche, log e recupero
 webui/
-  buildinfo/             Version shared by health and management endpoints
-  config/                Configuration, persistence, passwords, and redaction
-  gateway/               HTTP routing, retries, pools, refresh, and runtime
-  httpx/                 Shared HTTP responses, body handling, and headers
+  embed.go                Incorpora le risorse statiche nell'eseguibile
+  index.html              Struttura delle pagine
+  css/                    Token di design, stili base, componenti e layout
+  js/                      Moduli ES: shell, i18n, helper condivisi e un modulo per pagina
 ```
 
 Ordine di lettura consigliato:
 
 1. [Punto di ingresso](cmd/opencode2api/main.go) → [gestione runtime](internal/gateway/runtime.go) → [handler HTTP](internal/gateway/gateway.go).
-webui/
-  embed.go               Embeds the static assets into the executable
-  index.html             Page structure
+2. [Tentativi upstream](internal/gateway/upstream.go) e [instradamento modelli](internal/models/catalog.go) spiegano come una richiesta raggiunge il provider.
+3. [Conversione richieste](internal/protocol/request.go), [conversione risposte](internal/protocol/response.go) e [trasporto streaming](internal/protocol/stream.go) descrivono il comportamento dei protocolli.
+4. [Route di gestione](internal/admin/server.go) e [logica WebUI](webui/js/main.js) trattano configurazione e diagnostica.
 
-Esegui formattazione Go, analisi e build:
+Esegui formattazione, analisi e build Go:
 
 ```bash
 gofmt -w cmd internal webui
@@ -483,43 +479,43 @@ go vet ./...
 go build -o opencode2api ./cmd/opencode2api
 ```
 
-Per lo sviluppo locale, avvia il servizio con `go run ./cmd/opencode2api -config config.json`. Le build di rilascio iniettano la versione con `-ldflags "-X main.version=vX.Y.Z"`.
+Per lo sviluppo locale, avvia il servizio con `go run ./cmd/opencode2api -config config.json`. Le build di release iniettano la versione con `-ldflags "-X main.version=vX.Y.Z"`.
 
-Node.js serve solo per il controllo sintattico del JavaScript della WebUI:
+Node.js serve solo per controllare la sintassi JavaScript della WebUI:
 
 ```bash
 for f in webui/js/*.js webui/js/pages/*.js; do node --input-type=module --check < "$f"; done
 ```
 
-`.editorconfig`, `.gitattributes` e la formattazione Go standardizzano il codice. La CI esegue `go vet` e build con Go 1.24 e Go stabile su Linux/Windows, controlla la formattazione Go, la sintassi WebUI e la sintassi shell dell'entrypoint. I pacchetti di rilascio includono tutti e tre i README.
+`.editorconfig`, `.gitattributes` e la formattazione Go standardizzano il codice. La CI esegue `go vet` e build con Go 1.24 e la versione stabile su Linux/Windows, oltre ai controlli di formattazione Go, sintassi WebUI e sintassi shell dell'entrypoint. Gli archivi di release includono tutti e quattro i README.
 
-For local development, start the service with `go run ./cmd/opencode2api -config config.json`. Release builds still inject the version with `-ldflags "-X main.version=vX.Y.Z"`.
+## Risoluzione dei problemi
 
-| Sintomo                                 | Da verificare                                                                        |
-| ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| API restituisce 401                                 | Usa un valore `server_keys` locale configurato.                                 |
-| Health resta `starting`                   | Vedi i log di aggiornamento catalogo e connessioni in uscita; aggiungi override di protocollo se necessario.            |
-| Nessun modello pubblicato          | Verifica il tier configurato, le condizioni di anonimato e il supporto del protocollo nativo.               |
-| Request restituisce 502/504                         | Vedi i tentativi upstream, le credenziali, il proxy e i timeout totale/per tentativo.       |
-| HTTP 200 ma generazione del contenuto fallita        | Vedi gli eventi di errore SSE e il risultato della request, non solo il codice di stato HTTP.                |
-| Modifiche sull'host senza effetto in Docker | Il file attivo è nel volume di stato; re-importa o usa la WebUI.        |
-| Impossibile connettersi alla porta del container       | Verifica l'indirizzo di ascolto, le porte pubblicate e la configurazione nel volume in uso.    |
-| Le metriche di monitoraggio si perdono dopo il riavvio  | Il monitoraggio è solo in memoria; raccogli i log stdout esternamente.                     |
+| Sintomo                                  | Verifica                                                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| L'API restituisce 401                    | Usa un valore `server_keys` locale configurato.                                         |
+| Health resta `starting`                   | Controlla i log di aggiornamento del catalogo e la connettività in uscita; aggiungi override di protocollo se necessario. |
+| Non vengono esposti modelli               | Verifica i tier configurati, l'idoneità anonima e il supporto del protocollo nativo.      |
+| Le richieste restituiscono 502/504        | Controlla tentativi upstream, credenziali, proxy e timeout totali/per tentativo.         |
+| HTTP 200 ma generazione non riuscita      | Controlla l'evento di errore SSE e l'esito della richiesta, non solo lo stato HTTP.       |
+| Le modifiche host non hanno effetto in Docker | Il file attivo è nel volume di stato; importalo di nuovo o usa la WebUI.              |
+| Le porte del container non sono raggiungibili | Controlla indirizzi di ascolto, porte pubblicate e configurazione del volume attivo. |
+| Il monitoraggio scompare dopo il riavvio   | È conservato solo in memoria; raccogli esternamente i log stdout.                        |
 
-| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+## Ringraziamenti
 
 Grazie alla community [LINUX DO](https://linux.do) per il supporto.
 
-### Sforzo di ragionamento adattivo
+### Livello di ragionamento adattivo
 
-Imposta `reasoning.effort` (o l'override per modello) su `auto` per usare la forza più alta verificata con successo dal probe dei modelli gratuiti. I livelli specifici conservano il loro significato e la forza specificata dal client ha priorità. Non viene mantenuta alcuna allowlist per nome modello.
+Imposta `reasoning.effort` (o un override per modello) su `auto` per usare il livello più alto verificato con successo dal controllo dei modelli gratuiti. I livelli concreti mantengono il proprio significato e il livello specificato dal client ha la precedenza. Non viene mantenuta una lista di modelli consentiti.
 
-Dopo che un livello di base ha successo, i modelli con ragionamento vengono sondati in ordine `max`, `xhigh`, `high`, `medium`, `low`, `minimal`. Si scende di livello solo quando un parametro di ragionamento viene esplicitamente rifiutato. Gli errori transitori fermano la ricerca e non possono essere interpretati come un tetto di capacità inferiore. Se tutti i livelli vengono rifiutati, non viene inserito alcun override di ragionamento.
+Dopo il successo di un livello di base, i modelli con capacità di ragionamento vengono verificati nell'ordine `max`, `xhigh`, `high`, `medium`, `low`, `minimal`. Si passa a un livello inferiore solo se un parametro di ragionamento viene rifiutato esplicitamente. Gli errori transitori interrompono la ricerca e non vengono interpretati come un limite di capacità inferiore. Se tutti i livelli vengono rifiutati, non viene applicato alcun override di ragionamento.
 
-Le osservazioni vengono memorizzate per URL upstream, modello e protocollo nativo, mostrate nella pagina di disponibilità, e usate per al massimo due ore. Il probe attivo si applica solo ai modelli gratuiti Zen/anonimi; i modelli Go/pagati, le capacità sconosciute e i livelli non verificati non ricevono override automatici. Impostare `auto` non estende il perimetro del probe e non garantisce che l'upstream rispetti ogni campo accettato. Il probe può richiedere alcune piccole request per modello e consuma quota upstream.
+Le osservazioni sono persistite per URL upstream, modello e protocollo nativo, mostrate nella pagina di disponibilità e usate per non più di due ore. I controlli attivi coprono solo modelli Zen/anonimi gratuiti; modelli Go/a pagamento, capacità sconosciute e livelli non verificati non ricevono override automatici. Impostare `auto` non amplia l'ambito dei controlli e non garantisce che gli upstream applichino ogni campo accettato. Il controllo può richiedere diverse piccole richieste per modello e consumare la quota upstream.
 
-Thanks to the [LINUX DO](https://linux.do) community for its support.
+## Licenza
 
 SPDX-License-Identifier: GPL-3.0-or-later
 
-Questo progetto è software libero: puoi redistribuirlo e modificarlo secondo la GNU General Public License versione 3 pubblicata dalla Free Software Foundation, o una versione 3 o superiore (a tua scelta). Il software è fornito così com'è, senza garanzie. Vedi [LICENSE](LICENSE) per i termini completi.
+Questo progetto è software libero: puoi ridistribuirlo e modificarlo secondo la GNU General Public License pubblicata dalla Free Software Foundation, versione 3 o, a tua scelta, una versione successiva. Il software è fornito senza garanzie. Consulta [LICENSE](LICENSE) per i termini completi.

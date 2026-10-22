@@ -26,6 +26,7 @@ const DICTIONARY = {
     en: {
       "doc.title": "opencode2api · Operations Handbook",
       "lang.label": "Language",
+      "a11y.skip": "Skip to main content",
 
       "login.eyebrow": "Admin operations handbook / 2026",
       "login.headline": "Bring protocols, routing, and runtime state onto one desk.",
@@ -572,6 +573,7 @@ const DICTIONARY = {
     vi: {
       "doc.title": "opencode2api · Sổ tay vận hành",
       "lang.label": "Ngôn ngữ",
+      "a11y.skip": "Bỏ qua đến nội dung chính",
 
       "login.eyebrow": "Sổ tay vận hành dành cho quản trị / 2026",
       "login.headline": "Đưa giao thức, định tuyến và trạng thái vận hành lên cùng một bàn.",
@@ -1118,6 +1120,7 @@ const DICTIONARY = {
     it: {
       "doc.title": "opencode2api · Manuale operativo",
       "lang.label": "Lingua",
+      "a11y.skip": "Vai al contenuto principale",
 
       "login.eyebrow": "Manuale operativo admin / 2026",
       "login.headline": "Protocolli, instradamento e stato di runtime su un'unica scrivania.",
@@ -1164,7 +1167,7 @@ const DICTIONARY = {
       "config.tab.proxies": "Proxy",
       "config.tab.upstream": "Upstream e modelli",
       "config.tab.reasoning": "Ragionamento e prestazioni",
-      "config.tab.logging": "Logging",
+      "config.tab.logging": "Registri",
       "usage.hour": "Ultimi 60 minuti",
 
       "topbar.refresh": "Aggiorna ora",
@@ -1205,12 +1208,12 @@ const DICTIONARY = {
       "availability.title": "Verifica modelli gratuiti",
       "availability.refresh": "Aggiorna stato",
       "availability.desc":
-        "Verifica i modelli il cui nome nei metadati contiene free o il cui prezzo è 0 e che non sono stati esclusi. Si prova prima il canale anonimo e solo dopo una Zen Key; un modello viene disabilitato quando è realmente guasto e ritentato dopo 24 ore. Gli errori transitori non aggiungono altri modelli disabilitati: un modello abilitato viene ritentato dopo 1 ora, mentre uno disabilitato conserva il motivo precedente ed è ritentato dopo 24 ore. Quando un modello viene riabilitato o passato al controllo manuale resta abilitato e non viene più verificato automaticamente; tornando in automatico, il successivo tick dello scheduler pianifica la verifica. System One usa un proprio insieme di domande di verifica 1+1. Con effort impostato su auto viene mostrato l'effort massimo verificato.",
+        "Verifica i modelli il cui nome nei metadati contiene free o il cui prezzo è 0 e che non sono stati esclusi. Si prova prima il canale anonimo e solo dopo una Zen Key; un modello viene disabilitato quando è realmente guasto e ritentato dopo 24 ore. Gli errori transitori non aggiungono altri modelli disabilitati: un modello abilitato viene ritentato dopo 1 ora, mentre uno disabilitato conserva il motivo precedente ed è ritentato dopo 24 ore. Quando un modello viene riabilitato o passato al controllo manuale resta abilitato e non viene più verificato automaticamente; tornando in automatico, il successivo tick dello scheduler pianifica la verifica. System One usa un proprio insieme di domande di verifica 1+1. Con il livello impostato su auto viene applicato il livello massimo di ragionamento verificato.",
       "availability.col.model": "Modello",
       "availability.col.state": "Stato",
       "availability.col.channel": "Canale / esito",
       "availability.col.control": "Controllo",
-      "availability.col.effort": "Effort di ragionamento verificato",
+      "availability.col.effort": "Livello di ragionamento verificato",
       "availability.col.checked": "Ultima verifica",
       "availability.col.next": "Prossima verifica",
       "availability.col.action": "Azione",
@@ -1226,12 +1229,12 @@ const DICTIONARY = {
       "overview.proxy.title": "Nodi proxy",
       "overview.proxy.caption": "Sono nodi proxy; non sono descritti come IP di uscita.",
       "overview.proxy.col.node": "Nodo",
-      "overview.proxy.col.health": "Salute",
-      "overview.proxy.col.binding": "Binding",
+      "overview.proxy.col.health": "Stato",
+      "overview.proxy.col.binding": "Associazione",
       "overview.keys.title": "Pool di chiavi",
       "overview.keys.caption":
         "Sono mostrati solo gli ultimi 5 caratteri di una chiave e il suo stato di cooldown.",
-      "overview.keys.col.tail": "Coda chiave",
+      "overview.keys.col.tail": "Ultimi caratteri",
       "overview.keys.col.tier": "Tier",
       "overview.keys.col.state": "Stato",
       "overview.distribution.title": "Distribuzione richieste",
@@ -1305,7 +1308,7 @@ const DICTIONARY = {
       "playground.key.auto":
         "Instradamento automatico (anonimo / fallback Tier / rotazione chiavi)",
       "playground.key.caption":
-        "Quando viene scelta una chiave specifica, si prova solo quella: nessun passaggio a un'altra chiave, a un altro Tier o al canale anonimo, e nessuna modifica allo stato di cooldown della chiave o alla salute del proxy.",
+        "Quando viene scelta una chiave specifica, si prova solo quella: nessun passaggio a un'altra chiave, a un altro Tier o al canale anonimo, e nessuna modifica allo stato di cooldown della chiave o all'integrità del proxy.",
       "playground.request": "JSON della richiesta",
       "playground.reset": "Reimposta esempio",
       "playground.run": "Invia richiesta diagnostica",
@@ -1325,21 +1328,21 @@ const DICTIONARY = {
       "diagnostics.models.filter": "Filtra modelli",
       "diagnostics.models.col.model": "Modello",
       "diagnostics.models.col.protocol": "Protocollo nativo",
-      "diagnostics.models.col.route": "Route",
+      "diagnostics.models.col.route": "Instradamento",
       "diagnostics.models.col.eligibility": "Eleggibilità anonima",
       "diagnostics.models.col.source": "Fonte di valutazione",
       "diagnostics.models.col.cost": "Costo input / output",
       "diagnostics.requests.title": "Instradamento richieste",
       "diagnostics.requests.caption":
-        "La coda della chiave o il canale anonimo effettivamente usato per richiesta; sono mostrati solo i 100 record più recenti.",
+        "La coda della chiave o il canale anonimo effettivamente usati per richiesta; sono mostrati solo i 100 record più recenti.",
       "diagnostics.attempts.title": "Tentativi upstream",
       "diagnostics.attempts.caption":
-        "Coda della chiave, canale anonimo e nodo proxy sono mascherati; sono mostrati solo i 100 record più recenti.",
+        "Ultimi caratteri della chiave, canale anonimo e nodo proxy sono mascherati; sono mostrati solo i 100 record più recenti.",
       "diagnostics.col.time": "Ora",
       "diagnostics.col.model": "Modello",
       "diagnostics.col.tier": "Tier",
       "diagnostics.col.channel": "Canale",
-      "diagnostics.col.tail": "Coda chiave",
+      "diagnostics.col.tail": "Ultimi caratteri",
       "diagnostics.col.attempts": "Tentativi",
       "diagnostics.col.state": "Stato",
       "diagnostics.col.duration": "Durata",
@@ -1360,7 +1363,7 @@ const DICTIONARY = {
       "config.secrets.add": "Una chiave per riga",
       "config.proxy.title": "Nodi proxy",
       "config.proxy.caption":
-        "Supporta URL direct, HTTP(S) e SOCKS. Aggiungi il suffisso #pool a una voce per contrassegnarla come pool proxy rotante: il gateway apre allora una nuova connessione per ogni tentativo, salta il cooldown e l'eviction di salute, e la ritenta fino a retry.max_attempts volte.",
+        "Supporta URL direct, HTTP(S) e SOCKS. Aggiungi il suffisso #pool a una voce per contrassegnarla come pool proxy rotante: il gateway apre allora una nuova connessione per ogni tentativo, salta il cooldown e l'eviction dei nodi non integri, e la ritenta fino a retry.max_attempts volte.",
       "config.proxy.add": "Aggiungi proxy (uno per riga)",
       "config.upstream.title": "Upstream e instradamento protocolli",
       "config.upstream.caption":
@@ -1371,17 +1374,17 @@ const DICTIONARY = {
       "config.upstream.timeout": "Timeout richiesta (secondi)",
       "config.upstream.refresh": "Intervallo di refresh modelli (secondi)",
       "config.upstream.protocols": "Override protocollo modello (JSON)",
-      "config.reasoning.title": "Sforzo di ragionamento",
+      "config.reasoning.title": "Livello di ragionamento",
       "config.reasoning.caption":
-        "Applicato solo quando il client non specifica un effort; gli override per modello hanno priorità. Scegliere “Off” rimuove il ragionamento per le richieste che non lo richiedono.",
-      "config.reasoning.default": "Effort predefinito",
+        "Applicato solo quando il client non specifica un livello di ragionamento; gli override per modello hanno priorità. Scegliere “Disattivo” rimuove il ragionamento per le richieste che non lo richiedono.",
+      "config.reasoning.default": "Livello di ragionamento predefinito",
       "config.reasoning.follow": "Segui il client",
-      "config.reasoning.auto": "auto (verifica l'effort massimo disponibile)",
-      "config.reasoning.none": "Off",
+      "config.reasoning.auto": "auto (verifica il livello di ragionamento massimo disponibile)",
+      "config.reasoning.none": "Disattivo",
       "config.reasoning.byModel": "Override per modello (JSON)",
       "config.reasoning.byModelNote":
         "I valori possono essere minimal, low, medium, high, xhigh, max o none; un oggetto vuoto significa nessun override.",
-      "config.performance.title": "Prestazioni e logging",
+      "config.performance.title": "Prestazioni e registri",
       "config.performance.caption":
         "Un hot reload conserva comunque i totali accumulati nel processo.",
       "config.performance.idleTimeout": "Timeout di inattività (secondi)",
@@ -1462,7 +1465,7 @@ const DICTIONARY = {
         "Gestisci l'accesso al servizio B. Le chiavi upstream OpenCode Go restano nel Centro configurazione.",
       "apikeys.list.refresh": "Aggiorna elenco",
       "apikeys.col.name": "Nome",
-      "apikeys.col.tail": "Coda chiave",
+      "apikeys.col.tail": "Ultimi caratteri",
       "apikeys.col.state": "Stato",
       "apikeys.col.usage": "Utilizzo (ultima ora / totale)",
       "apikeys.col.created": "Creata il",
@@ -1500,8 +1503,8 @@ const DICTIONARY = {
       "common.yes": "Sì",
       "common.no": "No",
       "common.none": "Nessuno",
-      "common.on": "On",
-      "common.off": "Off",
+      "common.on": "Attivo",
+      "common.off": "Disattivo",
       "common.allowed": "Consentito",
       "common.denied": "Negato",
       "common.unknown": "Sconosciuto",
@@ -1544,7 +1547,7 @@ const DICTIONARY = {
       "play.key.transportError": "Anomalia di rete o proxy, nessun verdetto sulla chiave",
       "play.key.unavailable": "Chiave o runtime non disponibili",
       "play.key.requestError": "La richiesta non è riuscita",
-      "play.actualRoute": "Route effettiva",
+      "play.actualRoute": "Instradamento effettivo",
       "play.nativeProtocol": "Protocollo nativo",
       "play.anonymousVerdict": "Verdetto anonimo",
       "play.eligibility.allowed": "Consentito · {0}",
@@ -1566,7 +1569,7 @@ const DICTIONARY = {
       "diag.result": "Esito",
       "diag.ok": "Successo",
       "diag.failed": "Non riuscito",
-      "diag.route": "Route",
+      "diag.route": "Instradamento",
       "diag.state": "Stato",
       "diag.noTrace": "Nessun dato di trace del playground",
       "diag.streamError": "Streaming non riuscito",
@@ -1642,7 +1645,7 @@ const DICTIONARY = {
       "rotation.reason.firstOutputTimeout": "Timeout del primo output",
       "rotation.reason.streamError": "Output interrotto",
       "rotation.reason.readError": "Lettura della risposta non riuscita",
-      "rotation.reason.conversionError": "Parse o conversione della risposta non riusciti",
+      "rotation.reason.conversionError": "Analisi o conversione della risposta non riuscita",
       "rotation.reason.requestConversion": "Conversione della richiesta non riuscita",
       "rotation.reason.upstreamError": "Errore upstream",
 
@@ -1770,6 +1773,7 @@ const browserLocale = () => {
     if (normalized.startsWith("zh")) return "zh-CN";
     if (normalized.startsWith("vi")) return "vi";
     if (normalized.startsWith("en")) return "en";
+    if (normalized.startsWith("it")) return "it";
   }
   return "";
 };

@@ -56,7 +56,8 @@ function fillConfig(value) {
   const warp = value.warp || {};
   $("#c-warp-enabled").checked = !!warp.enabled;
   $("#c-warp-pool").value = warp.pool_size || 2;
-  $("#c-warp-stack").value = warp.stack || "ipv4";
+  $("#c-warp-stack").value = warp.stack || "ipv6";
+  $("#c-warp-source").value = warp.source_ipv6 || "";
   $("#c-proxyfile").value = value.proxyfile;
   $("#c-up-zen").value = value.upstream.zen;
   $("#c-up-go").value = value.upstream.go;
@@ -98,6 +99,7 @@ async function save(event) {
         enabled: $("#c-warp-enabled").checked,
         pool_size: numberValue("#c-warp-pool"),
         stack: $("#c-warp-stack").value,
+        source_ipv6: $("#c-warp-source").value.trim(),
       },
       proxies: secretInputs("proxies"),
       proxyfile: $("#c-proxyfile").value,

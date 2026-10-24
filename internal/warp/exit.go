@@ -19,8 +19,6 @@ import (
 	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
-const rateLimitWindow = 10
-
 const (
 	probeTimeout    = 5 * time.Second
 	probeCandidates = 10
@@ -33,7 +31,12 @@ const (
 	StackIPv6 Stack = "ipv6"
 	StackDual Stack = "dual"
 
-	DefaultStack = StackIPv4
+	// DefaultStack is IPv6: a WARP IPv4 egress is a public address shared by
+	// every user behind Cloudflare's NAT, so the upstream's per-address free
+	// quota is usually already spent, while the IPv6 egress belongs to the
+	// tunnel. The handshake still falls back to IPv4 endpoints when IPv6 does
+	// not answer, so an IPv4-only host keeps working without extra settings.
+	DefaultStack = StackIPv6
 )
 
 var (
@@ -67,15 +70,18 @@ type exit struct {
 	retired   bool
 	closed    bool
 	penalized bool
-	recent    []int
 	closeOnce sync.Once
 }
 
 func newExit(ctx context.Context, reg registration) (*exit, error) {
-	return newExitWithStack(ctx, reg, DefaultStack)
+	return newExitWithStack(ctx, reg, DefaultStack, netip.Addr{})
 }
 
-func newExitWithStack(ctx context.Context, reg registration, stack Stack) (*exit, error) {
+// newExitWithStack builds one userspace tunnel for reg. A valid source pins
+// the outer WireGuard socket to that address and restricts the peer endpoints
+// to IPv6, so the public egress is derived from the rotating source rather than
+// from whatever address the host happens to share.
+func newExitWithStack(ctx context.Context, reg registration, stack Stack, source netip.Addr) (*exit, error) {
 	normalized, err := ParseStack(string(stack))
 	if err != nil {
 		return nil, err
@@ -129,7 +135,14 @@ func newExitWithStack(ctx context.Context, reg registration, stack Stack) (*exit
 		tunDevice.Close()
 		return nil, err
 	}
-	wg := device.NewDevice(tunDevice, &simpleBind{}, device.NewLogger(device.LogLevelError, "warp: "))
+	if source.IsValid() {
+		// Try IPv6 endpoints first so the rotating source is used, but keep
+		// the IPv4 ones behind them: a host (or network) that cannot reach
+		// Cloudflare over IPv6 still gets a working tunnel, just with the
+		// shared address the prefix was supposed to avoid.
+		endpoints = preferIPv6Endpoints(endpoints)
+	}
+	wg := device.NewDevice(tunDevice, &simpleBind{source: source}, device.NewLogger(device.LogLevelError, "warp: "))
 	uapi := fmt.Sprintf(
 		"private_key=%s\npublic_key=%s\nallowed_ip=0.0.0.0/0\nallowed_ip=::/0\nendpoint=%s\npersistent_keepalive_interval=25\n",
 		privateKey, peerKey, endpoints[0],
@@ -152,6 +165,30 @@ func newExitWithStack(ctx context.Context, reg registration, stack Stack) (*exit
 	}
 	e.egress = egress
 	return e, nil
+}
+
+// preferIPv6Endpoints returns endpoints with the IPv6 ones first and the IPv4
+// ones after them, both in their original order. Nothing is dropped: an IPv4
+// fallback keeps WARP usable on a host that cannot reach Cloudflare over IPv6.
+func preferIPv6Endpoints(endpoints []string) []string {
+	ordered := make([]string, 0, len(endpoints))
+	ipv4 := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		host, _, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			continue
+		}
+		addr, err := netip.ParseAddr(host)
+		if err != nil || addr.Is4In6() {
+			continue
+		}
+		if addr.Is6() {
+			ordered = append(ordered, endpoint)
+		} else {
+			ipv4 = append(ipv4, endpoint)
+		}
+	}
+	return append(ordered, ipv4...)
 }
 
 func resolveEndpoints(ctx context.Context, candidates []string, fallback string) ([]string, error) {
@@ -389,24 +426,18 @@ func (e *exit) observe(status int, body []byte) (bool, string) {
 		return false, ""
 	}
 	if status == http.StatusForbidden {
-		e.recent = e.recent[:0]
 		reason := "HTTP 403"
 		if networkAnomaly(body) {
 			reason += " network anomaly"
 		}
 		return true, reason
 	}
-	if status != http.StatusTooManyRequests {
-		e.recent = e.recent[:0]
-		return false, ""
-	}
-	e.recent = append(e.recent, status)
-	if len(e.recent) > rateLimitWindow {
-		e.recent = e.recent[len(e.recent)-rateLimitWindow:]
-	}
-	if len(e.recent) == rateLimitWindow {
-		e.recent = e.recent[:0]
-		return true, fmt.Sprintf("%d consecutive HTTP 429 responses", rateLimitWindow)
+	// A free-tier 429 is scoped to the egress address, not to the request, the
+	// key or the session: retrying the same exit repeats it. Replace the exit
+	// on the first one, as the instant-rotate deployment does, so the retry
+	// draws a fresh outer source and a new public egress.
+	if status == http.StatusTooManyRequests {
+		return true, "HTTP 429"
 	}
 	return false, ""
 }
@@ -481,5 +512,16 @@ func (e *exit) egressKey() string {
 	if !e.egress.Is6() {
 		return ""
 	}
+	// The free tier treats a Cloudflare /64 as one quota scope: rotating inside
+	// the same /64 yields a new /128 but the same exhausted quota. Keying on
+	// the /64 keeps every active and cooling exit on a distinct scope, so a
+	// replacement is a real rotation rather than a cosmetic address change.
 	return netip.PrefixFrom(e.egress, 64).Masked().String()
+}
+
+// idle reports whether no lease currently holds this exit.
+func (e *exit) idle() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.refs == 0 && !e.retired && !e.closed
 }

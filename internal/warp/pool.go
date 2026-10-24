@@ -2,17 +2,31 @@ package warp
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
 
 const DefaultPoolSize = 2
 
-const egressCooldown = 10 * time.Minute
+// egressCooldown keeps a public /64 (or IPv4 /32) that the upstream has
+// rejected out of the pool for this long. The free tier scopes its quota to
+// that block, so a new tunnel inside it would only repeat the same answer.
+const egressCooldown = 30 * time.Minute
+
+// refillRetryDelay spaces out a failed registration attempt. A successful
+// attempt is only limited by the registrar's own 12-second pacing.
+const refillRetryDelay = 5 * time.Second
+
+// scaleDownDelay keeps exits created for a burst hot for a while after the
+// burst, so a following burst reuses them instead of paying for new
+// registrations.
+const scaleDownDelay = 60 * time.Second
 
 // ErrClosed is returned when a pool is used after Close. Callers use it to
 // tell a retiring pool apart from a temporary capacity wait.
@@ -62,42 +76,67 @@ type Pool struct {
 	stack   Stack
 	newExit func(context.Context) (*exit, error)
 
-	mu            sync.Mutex
-	active        []*exit
-	standby       []*exit
-	activeTarget  int
-	standbyTarget int
-	next          int
-	reserved      map[string]bool
-	cooling       map[string]time.Time
-	changed       chan struct{}
-	closed        bool
-	refilling     bool
-	wait          sync.WaitGroup
-	createMu      sync.Mutex
+	mu        sync.Mutex
+	active    []*exit
+	inflight  int
+	waiting   int
+	next      int
+	reserved  map[string]bool
+	cooling   map[string]time.Time
+	changed   chan struct{}
+	closed    bool
+	refilling bool
+	scaling   bool
+	wait      sync.WaitGroup
+	createMu  sync.Mutex
 }
 
 type Lease struct {
+	pool *Pool
 	exit *exit
 	once sync.Once
 }
 
 // Snapshot is a point-in-time view of a pool for health and admin reporting.
 type Snapshot struct {
-	Stack   string
-	Size    int
+	Stack string
+	Size  int
+	// Active is the number of exits currently in the ring. Standby counts the
+	// idle part of it: exits not held by a lease and ready to replace a
+	// penalized one immediately.
 	Active  int
 	Standby int
 	Cooling int
 	Egress  []string
 }
 
-// NewWithStack creates a WARP pool whose exits use the selected IP stack.
-func NewWithStack(ctx context.Context, log *slog.Logger, size int, stack Stack) (*Pool, error) {
-	normalized, err := ParseStack(string(stack))
+// Options configure a WARP pool.
+type Options struct {
+	// Size is the upper bound on exits. The pool keeps as many exits hot as
+	// the current concurrency needs (leases in flight plus queued requests,
+	// plus a spare) and never exceeds Size.
+	Size int
+	// Stack selects the address family inside the tunnel. An IPv6 stack makes
+	// the public egress an IPv6 address.
+	Stack Stack
+	// SourceIPv6, when valid, is the outer IPv6 prefix each exit binds its
+	// WireGuard socket to. Every exit draws its own address from it, so a
+	// replacement reaches Cloudflare from a new source and receives a new
+	// public egress — the only way past an egress-scoped free usage limit.
+	SourceIPv6 netip.Prefix
+}
+
+// NewWithOptions creates a WARP pool whose exits use the selected IP stack and,
+// optionally, rotate their outer IPv6 source within a prefix.
+func NewWithOptions(ctx context.Context, log *slog.Logger, opts Options) (*Pool, error) {
+	normalized, err := ParseStack(string(opts.Stack))
 	if err != nil {
 		return nil, err
 	}
+	if opts.SourceIPv6.IsValid() && (!opts.SourceIPv6.Addr().Is6() || opts.SourceIPv6.Bits() > 64) {
+		return nil, fmt.Errorf("WARP outer source must be an IPv6 prefix of /64 or shorter, got %s", opts.SourceIPv6)
+	}
+	size := opts.Size
 	if size <= 0 {
 		size = DefaultPoolSize
 	}
@@ -107,7 +146,14 @@ func NewWithStack(ctx context.Context, log *slog.Logger, size int, stack Stack) 
 		if err != nil {
 			return nil, err
 		}
-		return newExitWithStack(ctx, reg, normalized)
+		var source netip.Addr
+		if opts.SourceIPv6.IsValid() {
+			source, err = randomSource(opts.SourceIPv6)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return newExitWithStack(ctx, reg, normalized, source)
 	})
 	if err != nil {
 		return nil, err
@@ -116,35 +162,75 @@ func NewWithStack(ctx context.Context, log *slog.Logger, size int, stack Stack) 
 	return pool, nil
 }
 
+// randomSource draws one host address from prefix. The bits above the prefix
+// length are kept, every bit below is random, so two exits practically never
+// share an outer source.
+func randomSource(prefix netip.Prefix) (netip.Addr, error) {
+	address := prefix.Masked().Addr().As16()
+	var noise [16]byte
+	if _, err := rand.Read(noise[:]); err != nil {
+		return netip.Addr{}, fmt.Errorf("draw WARP outer source: %w", err)
+	}
+	keep := prefix.Bits()
+	for index := range address {
+		switch bits := keep - index*8; {
+		case bits >= 8:
+		case bits <= 0:
+			address[index] = noise[index]
+		default:
+			mask := byte(0xFF) << (8 - bits)
+			address[index] = address[index]&mask | noise[index]&^mask
+		}
+	}
+	return netip.AddrFrom16(address), nil
+}
+
 func newPool(ctx context.Context, log logger, size int, create func(context.Context) (*exit, error)) (*Pool, error) {
 	if size <= 0 {
 		size = DefaultPoolSize
 	}
-	poolCtx, cancel := context.WithCancel(ctx)
-	activeTarget, standbyTarget := poolTargets(size)
+	// The caller's context bounds the synchronous first registration, not the
+	// pool: it is typically an initialization deadline that expires moments
+	// after NewWithOptions returns. Deriving the pool lifetime from it would
+	// cancel every later refill and replacement with "context canceled",
+	// leaving the pool stuck on its first egress forever.
+	poolCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	p := &Pool{
-		ctx:           poolCtx,
-		cancel:        cancel,
-		logger:        log,
-		size:          size,
-		activeTarget:  activeTarget,
-		standbyTarget: standbyTarget,
-		newExit:       create,
-		reserved:      make(map[string]bool),
-		cooling:       make(map[string]time.Time),
-		changed:       make(chan struct{}),
+		ctx:      poolCtx,
+		cancel:   cancel,
+		logger:   log,
+		size:     size,
+		newExit:  create,
+		reserved: make(map[string]bool),
+		cooling:  make(map[string]time.Time),
+		changed:  make(chan struct{}),
 	}
-	first, err := p.createExit(poolCtx)
+	first, err := p.createExit(ctx)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
 	p.active = []*exit{first}
 	if log != nil {
-		log.Infof("OpenCode WARP/%s egress %s ready at %s (active target %d, standby target %d)", first.stack, first.id, first.egress, activeTarget, standbyTarget)
+		log.Infof("OpenCode WARP/%s pool ready (max %d exits, one spare)", first.stack, size)
 	}
 	p.startRefill()
 	return p, nil
+}
+
+// desiredLocked is the number of exits the pool should keep hot: one per
+// in-flight lease, one for every request waiting for an exit, plus a spare, so
+// a 429 can switch to a ready exit instead of waiting for a registration. Size
+// is the upper bound; at idle a pool of two or more keeps one spare.
+func (p *Pool) desiredLocked() int {
+	want := p.inflight + p.waiting + 1
+	if want < 2 {
+		want = 2
+	}
+	if want > p.size {
+		want = p.size
+	}
+	return want
 }
 
 func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
@@ -159,18 +245,34 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			p.next = (p.next + 1) % len(p.active)
 			active := p.active[index]
 			if active.addRef() {
+				p.inflight++
 				p.mu.Unlock()
-				return &Lease{exit: active}, nil
+				// Demand just rose: grow the ring toward it in the background.
+				p.startRefill()
+				return &Lease{pool: p, exit: active}, nil
 			}
 		}
+		p.waiting++
 		changed := p.changed
+		needRefill := len(p.active) < p.desiredLocked()
 		p.mu.Unlock()
+		if needRefill {
+			// Queued demand is demand too: start growing before we block.
+			p.startRefill()
+		}
+		var err error
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err = ctx.Err()
 		case <-p.ctx.Done():
-			return nil, ErrClosed
+			err = ErrClosed
 		case <-changed:
+		}
+		p.mu.Lock()
+		p.waiting--
+		p.mu.Unlock()
+		if err != nil {
+			return nil, err
 		}
 	}
 }
@@ -203,10 +305,13 @@ func (p *Pool) Size() int { return p.size }
 func (p *Pool) Snapshot() Snapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	snapshot := Snapshot{Stack: string(p.stack), Size: p.size, Active: len(p.active), Standby: len(p.standby), Cooling: len(p.cooling)}
+	snapshot := Snapshot{Stack: string(p.stack), Size: p.size, Active: len(p.active), Cooling: len(p.cooling)}
 	for _, active := range p.active {
-		if key := active.egressKey(); key != "" {
-			snapshot.Egress = append(snapshot.Egress, key)
+		if active.idle() {
+			snapshot.Standby++
+		}
+		if active.egress.IsValid() {
+			snapshot.Egress = append(snapshot.Egress, active.egress.String())
 		}
 	}
 	return snapshot
@@ -235,31 +340,15 @@ func (p *Pool) penalize(bad *exit, reason string) {
 	if p.next >= len(p.active) {
 		p.next = 0
 	}
-	var replacement *exit
-	if len(p.standby) > 0 && len(p.active) < p.activeTarget {
-		replacement = p.standby[0]
-		p.standby = p.standby[1:]
-		p.active = append(p.active, replacement)
-	}
-	if replacement != nil {
-		p.wait.Add(1)
-	}
-	p.wait.Add(1)
 	p.notifyLocked()
+	p.wait.Add(1)
 	p.mu.Unlock()
 
 	if p.logger != nil {
 		p.logger.Warnf("Rotating OpenCode WARP egress %s (%s)", bad.id, reason)
 	}
-	if replacement != nil {
-		go func() {
-			defer p.wait.Done()
-			bad.retire()
-		}()
-		if p.logger != nil {
-			p.logger.Infof("OpenCode WARP exit switched to standby %s at %s", replacement.id, replacement.egress)
-		}
-	}
+	// Re-register immediately: the retired exit is replaced in the background
+	// and the retry draws whichever active exit is ready first.
 	go func() {
 		defer p.wait.Done()
 		p.replace(bad, reason)
@@ -307,11 +396,8 @@ func (p *Pool) replace(old *exit, reason string) {
 		return
 	}
 	placed := false
-	if len(p.active) < p.activeTarget {
+	if len(p.active) < p.size {
 		p.active = append(p.active, replacement)
-		placed = true
-	} else if len(p.standby) < p.standbyTarget {
-		p.standby = append(p.standby, replacement)
 		placed = true
 	}
 	p.notifyLocked()
@@ -323,7 +409,7 @@ func (p *Pool) replace(old *exit, reason string) {
 		return
 	}
 	if p.logger != nil {
-		p.logger.Infof("OpenCode WARP egress %s replaced by %s at %s (%s), active=%d standby=%d", old.id, replacement.id, replacement.egress, reason, len(p.active), len(p.standby))
+		p.logger.Infof("OpenCode WARP egress %s replaced by %s at %s (%s), active=%d", old.id, replacement.id, replacement.egress, reason, len(p.active))
 	}
 	old.retire()
 	p.startRefill()
@@ -331,7 +417,7 @@ func (p *Pool) replace(old *exit, reason string) {
 
 func (p *Pool) refill() {
 	p.mu.Lock()
-	if p.closed || p.refilling || len(p.active) == 0 || !p.needsRefillLocked() {
+	if p.closed || p.refilling || !p.needsRefillLocked() {
 		p.mu.Unlock()
 		return
 	}
@@ -341,18 +427,13 @@ func (p *Pool) refill() {
 	replacement, err := p.createExit(p.ctx)
 	p.mu.Lock()
 	p.refilling = false
-	if err == nil && !p.closed {
-		if len(p.active) < p.activeTarget {
-			p.active = append(p.active, replacement)
-			replacement = nil
-			p.notifyLocked()
-		} else if len(p.standby) < p.standbyTarget {
-			p.standby = append(p.standby, replacement)
-			replacement = nil
-			p.notifyLocked()
-		}
+	placed := false
+	if err == nil && !p.closed && len(p.active) < p.size {
+		p.active = append(p.active, replacement)
+		replacement = nil
+		placed = true
 	}
-	if p.closed {
+	if placed || p.closed {
 		p.notifyLocked()
 	}
 	p.mu.Unlock()
@@ -361,15 +442,21 @@ func (p *Pool) refill() {
 		p.releaseReservation(replacement)
 		replacement.close()
 	}
-	if err != nil && p.ctx.Err() == nil && p.logger != nil {
-		p.logger.Warnf("Cannot pre-register OpenCode WARP egress: %v", err)
+	if err != nil && p.ctx.Err() == nil {
+		if p.logger != nil {
+			p.logger.Warnf("Cannot pre-register OpenCode WARP egress: %v", err)
+		}
+		// Every registration is already paced by the registrar; retry soon
+		// instead of leaving the pool under its target for a long window.
+		p.after(refillRetryDelay, p.startRefill)
+		return
 	}
 	p.startRefill()
 }
 
 func (p *Pool) startRefill() {
 	p.mu.Lock()
-	if p.closed || p.refilling || len(p.active) == 0 || !p.needsRefillLocked() {
+	if p.closed || p.refilling || !p.needsRefillLocked() {
 		p.mu.Unlock()
 		return
 	}
@@ -378,6 +465,85 @@ func (p *Pool) startRefill() {
 	go func() {
 		defer p.wait.Done()
 		p.refill()
+	}()
+}
+
+// released records that a lease was returned and trims the ring back toward
+// the demand of the moment. Freed exits stay hot for scaleDownDelay, so a
+// burst that pauses does not immediately pay for re-registering them.
+func (p *Pool) released() {
+	p.mu.Lock()
+	if p.inflight > 0 {
+		p.inflight--
+	}
+	closed := p.closed
+	wantRefill := !closed && len(p.active) < p.desiredLocked()
+	started := p.scaling
+	if !closed && !started && len(p.active) > p.desiredLocked() {
+		p.scaling = true
+		started = true
+	}
+	p.mu.Unlock()
+	if closed {
+		return
+	}
+	if wantRefill {
+		p.startRefill()
+	}
+	if started {
+		p.after(scaleDownDelay, p.scaleDown)
+	}
+}
+
+// scaleDown retires every idle exit above the current demand. Busy surplus
+// exits are left to their release, which arms another pass if the ring is
+// still over target then.
+func (p *Pool) scaleDown() {
+	p.mu.Lock()
+	p.scaling = false
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	want := p.desiredLocked()
+	var dropped []*exit
+	if surplus := len(p.active) - want; surplus > 0 {
+		kept := p.active[:0]
+		for _, candidate := range p.active {
+			if surplus > 0 && candidate.idle() {
+				dropped = append(dropped, candidate)
+				surplus--
+				continue
+			}
+			kept = append(kept, candidate)
+		}
+		p.active = kept
+	}
+	if p.next >= len(p.active) {
+		p.next = 0
+	}
+	p.mu.Unlock()
+	for _, drop := range dropped {
+		p.releaseReservation(drop)
+		drop.retire()
+		if p.logger != nil {
+			p.logger.Infof("OpenCode WARP egress %s scaled down at %s", drop.id, drop.egress)
+		}
+	}
+}
+
+// after runs fn once delay has elapsed, unless the pool closes first.
+func (p *Pool) after(delay time.Duration, fn func()) {
+	p.wait.Add(1)
+	go func() {
+		defer p.wait.Done()
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-p.ctx.Done():
+		case <-timer.C:
+			fn()
+		}
 	}()
 }
 
@@ -410,6 +576,9 @@ func (p *Pool) createExit(ctx context.Context) (*exit, error) {
 		}
 		p.mu.Unlock()
 		if usable {
+			if p.logger != nil {
+				p.logger.Infof("OpenCode WARP/%s egress %s ready at %s", candidate.stack, candidate.id, candidate.egress)
+			}
 			return candidate, nil
 		}
 		lastErr = fmt.Errorf("WARP egress %s is already active or cooling down", key)
@@ -449,14 +618,7 @@ func (p *Pool) activeIndexLocked(target *exit) int {
 }
 
 func (p *Pool) needsRefillLocked() bool {
-	return len(p.active) < p.activeTarget || len(p.standby) < p.standbyTarget
-}
-
-func poolTargets(size int) (active, standby int) {
-	if size <= 1 {
-		return 1, 0
-	}
-	return size - 1, 1
+	return len(p.active) < p.desiredLocked()
 }
 
 func (p *Pool) Close() {
@@ -468,17 +630,11 @@ func (p *Pool) Close() {
 	p.closed = true
 	active := p.active
 	p.active = nil
-	standby := p.standby
-	p.standby = nil
 	p.notifyLocked()
 	p.mu.Unlock()
 
 	p.cancel()
 	for _, item := range active {
-		p.releaseReservation(item)
-		item.retire()
-	}
-	for _, item := range standby {
 		p.releaseReservation(item)
 		item.retire()
 	}
@@ -499,6 +655,9 @@ func (l *Lease) Release() {
 	l.once.Do(func() {
 		if l.exit != nil {
 			l.exit.release()
+		}
+		if l.pool != nil {
+			l.pool.released()
 		}
 	})
 }

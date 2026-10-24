@@ -1,9 +1,12 @@
 package warp
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"sync"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -13,6 +16,7 @@ type simpleBind struct {
 	mu     sync.Mutex
 	ipv4   *net.UDPConn
 	ipv6   *net.UDPConn
+	source netip.Addr
 	closed bool
 }
 
@@ -27,6 +31,23 @@ func (b *simpleBind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
 		return nil, 0, conn.ErrBindAlreadyOpen
 	}
 	b.closed = false
+	if b.source.IsValid() {
+		v6, err := b.listenIPv6(port)
+		if err != nil {
+			return nil, 0, err
+		}
+		port = uint16(v6.LocalAddr().(*net.UDPAddr).Port)
+		// Keep an IPv4 socket as well: if no IPv6 endpoint answers, the
+		// handshake falls back to IPv4 and the tunnel still comes up.
+		v4, _ := net.ListenUDP("udp4", &net.UDPAddr{Port: int(port)})
+		var receives []conn.ReceiveFunc
+		if v4 != nil {
+			receives = append(receives, receiveUDP(v4))
+		}
+		receives = append(receives, receiveUDP(v6))
+		b.ipv4, b.ipv6 = v4, v6
+		return receives, port, nil
+	}
 	var v4, v6 *net.UDPConn
 	var err error
 	if port == 0 {
@@ -70,6 +91,25 @@ func receiveUDP(udp *net.UDPConn) conn.ReceiveFunc {
 	}
 }
 
+// listenIPv6 opens the WireGuard socket bound to the exit's outer source
+// address. Every packet — handshake and data — leaves from that address, so a
+// replacement exit presents Cloudflare with a new source and receives a new
+// public egress.
+func (b *simpleBind) listenIPv6(port uint16) (*net.UDPConn, error) {
+	address := net.JoinHostPort(b.source.String(), strconv.Itoa(int(port)))
+	config := net.ListenConfig{Control: freebindControl}
+	packet, err := config.ListenPacket(context.Background(), "udp6", address)
+	if err != nil {
+		return nil, fmt.Errorf("bind WARP outer source %s: %w", b.source, err)
+	}
+	conn, ok := packet.(*net.UDPConn)
+	if !ok {
+		packet.Close()
+		return nil, fmt.Errorf("bind WARP outer source %s: unexpected connection %T", b.source, packet)
+	}
+	return conn, nil
+}
+
 func (b *simpleBind) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -104,8 +144,12 @@ func (b *simpleBind) Send(bufs [][]byte, endpoint conn.Endpoint) error {
 		udp = b.ipv6
 	}
 	closed := b.closed
+	source := b.source
 	b.mu.Unlock()
 	if closed || udp == nil {
+		if !closed && source.IsValid() && ep.addr.Addr().Is4() {
+			return fmt.Errorf("WARP exit bound to outer source %s cannot reach IPv4 endpoint %s", source, ep.addr)
+		}
 		return net.ErrClosed
 	}
 	for _, buf := range bufs {

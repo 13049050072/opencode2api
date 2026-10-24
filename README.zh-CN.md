@@ -234,7 +234,9 @@ System One 将自由文本状态与类型化问题配对，并返回类型化答
 
 隧道运行在网关进程内：注册 WARP 设备，通过 UDP 与 Cloudflare 建立 WireGuard 连接，并在用户态网络栈中终结。它不需要 TUN 设备、root、`NET_ADMIN` 或修改路由表，但宿主机（或容器）必须能向 Cloudflare 端点发送 UDP（端口 `2408`）。注册与 `warp=on` 的 trace 探测在启动时完成；WARP 无法初始化时启动直接失败，不会静默回退到代理。通过 WebUI 启用同样采用失败即拒绝：参数错误会返回错误，旧运行时继续服务。
 
-`warp.pool_size`（1–8，默认 `2`）保持相应数量的出口可用，并在出口被封锁或损坏时自动替换；`warp.stack` 可选 `ipv4`（默认）、`ipv6` 或 `dual`。`/healthz` 会返回 `warp` 状态块；启用 WARP 但没有任何活跃出口时返回 503。只有 WARP 关闭或存在 Go Key 需要代理时，`no_healthy_proxies` 才会阻塞就绪。诊断请求会占用出口，但不会轮换或淘汰它。关闭 WARP 后，免费通道恢复使用代理。
+`warp.pool_size`（1–32，默认 `2`）是**上限**而不是固定数量。活跃出口按并发动态调整：每个在途请求一个出口，另加一个备用，最少 1 个、最多不超过配置上限；空闲 60 秒的多余出口会被回收，因此突发流量会把出口环撑大，空闲后再缩回。出口第一次收到上游 429 或 403 即被淘汰并立刻在后台重新注册（注册仍受 Cloudflare 12 秒的 API 节奏限制，上限越大预热越慢，应按免费模型的并发峰值设置）；免费模型请求会持续切换到其他出口，直到用完 `retry.max_attempts` 次才把最后一个 429 返回客户端。`warp.stack` 默认 `ipv6`，可选 `ipv4` 或 `dual`。
+
+上游的免费额度按**出口网段**计算，所以只有替换出口能拿到不同网段时轮换才有意义：IPv6 出口按 `/64` 去重并冷却 30 分钟，IPv4 出口按 `/32`。Cloudflare WARP 的 IPv4 出口通常是同一个共享 NAT 地址，常被其他用户用尽；IPv6 网络栈的出口则由外层 WireGuard 源地址决定。把 `warp.source_ipv6` 设为路由到本机的 IPv6 前缀（通常是 `/64`，`warp.stack` 默认已是 `ipv6`），每个出口就会从该前缀绑定自己的源地址。Linux 下该地址通过 `IPV6_FREEBIND` 绑定（网关已自动设置），或要求地址已分配到网卡。不会预先探测地址族：握手先尝试 IPv6 端点，全部失败时自动回退到 IPv4 端点（此时出口为共享地址）。留空则共用本机默认源地址。某些网络的 WARP 出口池本身已被用尽，此时每个新出口也会返回 429，网关会持续轮换出口，但仍会在尝试次数用尽后返回 429。`/healthz` 会返回 `warp` 状态块；启用 WARP 但没有任何活跃出口时返回 503。只有 WARP 关闭或存在 Go Key 需要代理时，`no_healthy_proxies` 才会阻塞就绪。诊断请求会占用出口，但不会轮换或淘汰它。关闭 WARP 后，免费通道恢复使用代理。
 
 ### 官方系统提示词
 
@@ -285,8 +287,9 @@ Key 初始化时均衡分配到代理。真实流量可以触发代理检查、K
 | `zen_keys`、`go_keys`       | 未启用匿名模式时，至少需要一个上游 Key。                                              |
 | `anonymous`                 | `false`。                                                                             |
 | `warp.enabled`              | `false`；免费通道流量通过 Cloudflare WARP 出口，不使用代理。                          |
-| `warp.pool_size`            | `2`；活跃 WARP 出口数量，1–8。                                                        |
-| `warp.stack`                | `ipv4`；可选 `ipv4`、`ipv6`、`dual`。                                                 |
+| `warp.pool_size`            | `2`；WARP 出口上限（活跃出口按并发动态调整），1–32。                                 |
+| `warp.stack`                | `ipv6`；可选 `ipv6`、`ipv4`、`dual`。                                                 |
+| `warp.source_ipv6`          | 空；每个出口绑定的外层 IPv6 源前缀（`/64`），要求 `stack = "ipv6"`。                  |
 | `prefer`                    | `go`；可选 `go`、`zen`。                                                              |
 | `upstream.zen`              | `https://opencode.ai/zen`。                                                           |
 | `upstream.go`               | `https://opencode.ai/zen/go`。                                                        |

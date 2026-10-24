@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -67,6 +68,19 @@ func (g *Gateway) newWarpLease(lease *warp.Lease, useBun bool) (*warpLease, erro
 	transport.Proxy = nil
 	transport.DialContext = dial
 	transport.ForceAttemptHTTP2 = false
+	// A clone of DefaultTransport made after its first dial inherits the
+	// configured HTTP/2 ALPN and TLSNextProto map, so the transport negotiates
+	// h2 and then hands SETTINGS frames to the HTTP/1.x reader ("malformed HTTP
+	// response"). Every WARP attempt must speak HTTP/1.1 over a fresh tunnel,
+	// so pin the ALPN and disable the h2 wiring explicitly.
+	transport.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{NextProtos: []string{"http/1.1"}}
+	} else {
+		tlsCfg := transport.TLSClientConfig.Clone()
+		tlsCfg.NextProtos = []string{"http/1.1"}
+		transport.TLSClientConfig = tlsCfg
+	}
 	transport.MaxIdleConns = perf.MaxIdleConns
 	transport.MaxIdleConnsPerHost = perf.MaxIdleConnsPerHost
 	transport.MaxConnsPerHost = perf.MaxConnsPerHost
@@ -224,7 +238,13 @@ func (g *Gateway) doWarpAnonymousUpstream(ctx context.Context, route models.Rout
 	for index, baseURL := range upstreams {
 		prepared[index], renames[index] = prepareAnonymousBody(rawBody, protocol, models.IsV1Upstream(baseURL))
 	}
-	limit := max(g.cfg.Retry.MaxAttempts, g.warp.Size()+1)
+	// A 429 is scoped to the exit that carried it, so the request keeps
+	// rotating exits until the configured attempt budget is spent; only then
+	// does the last 429 reach the client.
+	limit := g.cfg.Retry.MaxAttempts
+	if limit < 1 {
+		limit = 1
+	}
 	firstEventTimeout := time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds) * time.Second
 	var lastResponse *http.Response
 	var lastErr error
@@ -301,7 +321,7 @@ func (g *Gateway) doWarpAnonymousUpstream(ctx context.Context, route models.Rout
 		if halted || ctx.Err() != nil {
 			break
 		}
-		if !leaseBlocked {
+		if !leaseBlocked && upstreamStatus(lastResponse) != http.StatusTooManyRequests {
 			if pause, tripped := g.anonymous.NoteFailure(); tripped {
 				g.logger.Warn("anonymous lane circuit breaker opened", "component", "upstream", "event", "anonymous_breaker_open", "status", upstreamStatus(lastResponse), "paused_for", pause.String())
 				break
@@ -342,6 +362,12 @@ func (g *Gateway) observeKeyResultWARP(ctx context.Context, nodes *upstreamNodes
 	if err != nil && resp == nil {
 		// The lease acquisition, dial, or first event failed: the upstream
 		// never judged this key. The pool already retired the exit.
+		return
+	}
+	// A 429 or a network-abuse 403 is scoped to the WARP exit, which the pool
+	// has just retired; holding it against the key would stop a single-key
+	// rotation after the first attempt instead of retrying on a fresh exit.
+	if resp != nil && (resp.StatusCode == http.StatusTooManyRequests || peekNetworkAbuseBlock(resp)) {
 		return
 	}
 	nodes.MarkFailure(node, resp, err)

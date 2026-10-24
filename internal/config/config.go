@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -75,6 +76,11 @@ type WarpConfig struct {
 	Enabled  bool   `json:"enabled"`
 	PoolSize int    `json:"pool_size,omitempty"`
 	Stack    string `json:"stack,omitempty"`
+	// SourceIPv6 is an outer IPv6 prefix (usually a routed /64) each WARP exit
+	// binds its WireGuard socket to. Rotating the source is what gives a
+	// replacement exit a new public egress; without it, exits share one
+	// address and an egress-scoped free quota stays exhausted.
+	SourceIPv6 string `json:"source_ipv6,omitempty"`
 }
 
 // Normalize fills the defaults and canonicalizes the stack name.
@@ -90,8 +96,22 @@ func (w *WarpConfig) Normalize() error {
 		return fmt.Errorf("warp.stack: %w", err)
 	}
 	w.Stack = string(stack)
-	if w.PoolSize < 1 || w.PoolSize > 8 {
-		return errors.New("warp.pool_size must be between 1 and 8")
+	if w.PoolSize < 1 || w.PoolSize > 32 {
+		return errors.New("warp.pool_size must be between 1 and 32")
+	}
+	w.SourceIPv6 = strings.TrimSpace(w.SourceIPv6)
+	if w.SourceIPv6 != "" {
+		prefix, err := netip.ParsePrefix(w.SourceIPv6)
+		if err != nil || !prefix.Addr().Is6() || prefix.Addr().Is4In6() {
+			return fmt.Errorf("warp.source_ipv6: %q is not an IPv6 prefix", w.SourceIPv6)
+		}
+		if prefix.Bits() > 64 {
+			return fmt.Errorf("warp.source_ipv6: %s must be /64 or shorter", prefix)
+		}
+		if stack != warp.StackIPv6 {
+			return errors.New("warp.source_ipv6 requires warp.stack to be \"ipv6\"; an IPv4 stack cannot present an IPv6 egress")
+		}
+		w.SourceIPv6 = prefix.Masked().String()
 	}
 	return nil
 }

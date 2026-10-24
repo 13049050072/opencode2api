@@ -15,6 +15,7 @@ import (
 	"opencode2api/internal/httpx"
 	"opencode2api/internal/identity"
 	"opencode2api/internal/models"
+	wire "opencode2api/internal/protocol"
 	"opencode2api/internal/telemetry"
 	"opencode2api/internal/warp"
 )
@@ -219,9 +220,9 @@ func (g *Gateway) doWarpAnonymousUpstream(ctx context.Context, route models.Rout
 	protocol := route.ProtocolFor(config.TierZen)
 	upstreams := g.anonymousUpstreams()
 	prepared := make([][]byte, len(upstreams))
-	aliases := make([]string, len(upstreams))
+	renames := make([]*wire.ToolRenames, len(upstreams))
 	for index, baseURL := range upstreams {
-		prepared[index], aliases[index] = prepareAnonymousBody(rawBody, protocol, models.IsV1Upstream(baseURL))
+		prepared[index], renames[index] = prepareAnonymousBody(rawBody, protocol, models.IsV1Upstream(baseURL))
 	}
 	limit := max(g.cfg.Retry.MaxAttempts, g.warp.Size()+1)
 	firstEventTimeout := time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds) * time.Second
@@ -241,7 +242,7 @@ func (g *Gateway) doWarpAnonymousUpstream(ctx context.Context, route models.Rout
 			if ctx.Err() != nil {
 				break
 			}
-			setRequestShape(ctx, false, aliases[index])
+			setRequestShape(ctx, false, renames[index])
 			attempts++
 			if meta := telemetry.MetaFromContext(ctx); meta != nil {
 				meta.Attempts = attemptOffset + attempts

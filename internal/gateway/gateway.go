@@ -6,7 +6,7 @@
 // origin (models.V1Base, also the default upstream.zen), which
 // models.IsV1Upstream detects. It expects the OpenCode 1.x client shape: the
 // 1.x User-Agent, the x-opencode-request header, a git-commit-shaped project
-// and, on the free tier, the single "read" tool. The v2 lane is the /inference
+// and, on the free tier, the 1.x toolset. The v2 lane is the /inference
 // origin (upstream.anonymous) and the Go plan's /zen/go origin, which expect
 // the OpenCode 2.x CLI shape. The anonymous free tier tries the configured v2
 // /inference origin first and falls back to the v1 origin.
@@ -222,16 +222,17 @@ func callerScope(ctx context.Context) string {
 type requestShapeContextKey struct{}
 
 type requestShape struct {
-	shaped    bool
-	toolAlias string
+	shaped  bool
+	renames *wire.ToolRenames
 }
 
-func setRequestShape(ctx context.Context, shaped bool, toolAlias string) {
+func setRequestShape(ctx context.Context, shaped bool, renames *wire.ToolRenames) {
 	if state, ok := ctx.Value(requestShapeContextKey{}).(*requestShape); ok {
-		state.shaped, state.toolAlias = shaped, toolAlias
+		state.shaped, state.renames = shaped, renames
 	}
 	if meta := telemetry.MetaFromContext(ctx); meta != nil {
-		meta.Shaped, meta.ToolAlias = shaped, toolAlias
+		meta.Shaped = shaped
+		meta.ToolRenames = renames.Count()
 	}
 }
 
@@ -382,7 +383,7 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			return
 		}
 		shape := requestShapeFrom(r.Context())
-		toolAlias := shape.toolAlias
+		toolRenames := shape.renames
 		if stream {
 			if meta != nil {
 				meta.Stream = true
@@ -395,7 +396,7 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("X-Accel-Buffering", "no")
 			w.WriteHeader(resp.StatusCode)
-			streamBody := wire.RenameStreamReader(resp.Body, upstreamRoute.Protocol, v1ReadTool, toolAlias)
+			streamBody := wire.RenameStreamReader(resp.Body, upstreamRoute.Protocol, toolRenames)
 			var usage wire.Usage
 			var usageReported bool
 			if external == upstreamRoute.Protocol {
@@ -435,7 +436,7 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 			}
 			responseBody = collapsed
 		}
-		responseBody = wire.RenameResponseTool(responseBody, upstreamRoute.Protocol, v1ReadTool, toolAlias)
+		responseBody = wire.RenameResponseTool(responseBody, upstreamRoute.Protocol, toolRenames)
 		if usage, reported := wire.ResponseUsage(upstreamRoute.Protocol, responseBody); meta != nil {
 			meta.Usage, meta.UsageReported = usage, reported
 		}

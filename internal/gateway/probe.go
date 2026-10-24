@@ -55,8 +55,8 @@ func (g *Gateway) resolvedEffort(model string, tier config.Tier, protocol wire.P
 // question, or a minimal streaming "Reply with OK." Chat prompt converted to
 // protocol, with effort forced when non-empty and the result shaped for the
 // free tier by prepareAnonymousBody. v1 reports whether the probe targets the
-// v1 lane (models.IsV1Upstream), which selects the single "read" tool shaping
-// instead of the v2 toolset.
+// v1 lane (models.IsV1Upstream), which selects the 1.x toolset instead of the
+// 2.x one.
 func probePayload(model string, protocol wire.Protocol, effort string, v1 bool) ([]byte, error) {
 	if protocol == wire.SystemOne {
 		// TypeSafe's native boolean type is "noul", not JSON Schema boolean.

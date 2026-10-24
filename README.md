@@ -12,6 +12,7 @@ The executable includes the WebUI. Running the service requires no Node.js runti
 - Text, images, reasoning, function tools, tool calls, and tool results; file content where the target protocol can represent it.
 - Separate Zen and Go key pools, configurable tier preference, retries, and session affinity.
 - Optional anonymous Zen access with the OpenCode `public` credential.
+- Optional userspace Cloudflare WARP egress for free-model traffic, without TUN or root.
 - Direct, HTTP, HTTPS, SOCKS5, and SOCKS5H connections, including a proxy file.
 - Dynamic model discovery, native protocol metadata, and disk caches.
 - A separate management port with configuration editing, a Playground, diagnostics, token statistics, and live logs.
@@ -76,6 +77,8 @@ docker compose restart
 ```
 
 The container runs the service as an unprivileged user. Compose uses a read-only root filesystem, a writable state volume, and a temporary `/tmp` filesystem.
+
+WARP needs only outbound UDP (Cloudflare endpoint port `2408`), so the image's non-root, no-`NET_ADMIN` setup still works; do not switch to host networking or add `--cap-add` for it. If the container network blocks UDP, enabling WARP fails at startup.
 
 | Compose variable            | Default  | Effect                                            |
 | --------------------------- | -------- | ------------------------------------------------- |
@@ -225,9 +228,17 @@ When only anonymous access is configured, `/v1/models` exposes only models eligi
 
 Free models never need a Zen key: with `anonymous: true` they are served by the public lane, and a configured key is only their fallback. To keep keys but expose free models only, set `models.free_only: true`. Paid models then disappear from `/v1/models`, direct requests for them are rejected, and rotation aliases keep only free members; free models may still fall back to the configured keys.
 
+### WARP egress for free models
+
+`warp.enabled` moves every free-model request on a free lane — the anonymous lane, the free-model fallback through a Zen key, free-model availability probes, and the anonymous catalog refresh — onto a userspace Cloudflare WARP tunnel. Those requests use no proxy, so the free tier sees the WARP exit address instead of a configured node. Go-plan keys and paid models keep their proxy bindings.
+
+The tunnel lives inside the gateway process: it registers a WARP device, speaks WireGuard over UDP to Cloudflare, and terminates in a userspace network stack. It needs no TUN device, root, `NET_ADMIN`, or routing-table change, but the host or container must be able to send UDP to Cloudflare's endpoint (port `2408`). Registration and the `warp=on` trace probe run at startup; if WARP cannot initialize, startup fails instead of silently falling back to proxies. Enabling it through the WebUI is also fail-closed: a bad value returns an error and the previous runtime keeps serving.
+
+`warp.pool_size` (1–8, default `2`) keeps that many exits active and replaces a blocked or broken exit automatically. `warp.stack` selects `ipv4` (default), `ipv6`, or `dual`. `/healthz` reports a `warp` block and answers 503 while WARP is enabled but no exit is active; `no_healthy_proxies` only blocks readiness when WARP is off or Go keys need proxies. Diagnostics acquire an exit but never rotate or penalize it. Turning WARP off restores proxy routing for the free lanes.
+
 ### Free model availability
 
-The gateway probes models whose IDs contain `free` (case-insensitive), or whose metadata reports zero input/output cost without deprecation, with a short request using its native protocol. It tries the enabled anonymous lane first and then one configured Zen Key. A valid completed response on either lane keeps the model enabled; the model is disabled in discovery and routing only when every attempted lane explicitly reports that the model does not exist or has been retired. Authentication errors, rate limits, timeouts, transport errors, 5xx responses, and malformed replies are inconclusive: they do not create a new disable, and are checked again in one hour. Probe traffic does not alter production key/proxy cooldowns or request statistics. It still reaches the upstream and may consume its free allowance.
+The gateway probes models whose IDs contain `free` (case-insensitive), or whose metadata reports zero input/output cost without deprecation, with a short request using its native protocol. It tries the enabled anonymous lane first and then one configured Zen Key. With `warp.enabled`, every probe lane leaves through WARP instead of a proxy; when no exit can be acquired the probe reports `warp_unavailable` and stays inconclusive. A valid completed response on either lane keeps the model enabled; the model is disabled in discovery and routing only when every attempted lane explicitly reports that the model does not exist or has been retired. Authentication errors, rate limits, timeouts, transport errors, 5xx responses, and malformed replies are inconclusive: they do not create a new disable, and are checked again in one hour. Probe traffic does not alter production key/proxy cooldowns or request statistics. It still reaches the upstream and may consume its free allowance.
 
 System One models use a native `noul` question asking whether 1 + 1 equals 2; they are never sent chat/tool payloads. Model discovery includes `native_protocol` and `supported_endpoints`; rotation aliases are listed only when Go keys and eligible models exist. Legacy v1.3.6 disables are cleared on load and scheduled for immediate recheck because those probes used invalid session IDs.
 
@@ -261,6 +272,9 @@ See [config.example.json](config.example.json) for a complete starting configura
 | `server_keys`               | At least one local key is required.                                         |
 | `zen_keys`, `go_keys`       | At least one upstream key is required unless anonymous access is enabled.   |
 | `anonymous`                 | `false`.                                                                    |
+| `warp.enabled`              | `false`; free-lane traffic leaves through Cloudflare WARP and no proxy.    |
+| `warp.pool_size`            | `2`; active WARP exits, 1–8.                                                |
+| `warp.stack`                | `ipv4`; `ipv4`, `ipv6`, or `dual`.                                          |
 | `prefer`                    | `go`; accepts `go` or `zen`.                                                |
 | `upstream.zen`              | `https://opencode.ai/zen`.                                                  |
 | `upstream.go`               | `https://opencode.ai/zen/go`.                                               |

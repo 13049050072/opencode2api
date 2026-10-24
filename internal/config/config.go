@@ -13,6 +13,7 @@ import (
 
 	"opencode2api/internal/jsonutil"
 	wire "opencode2api/internal/protocol"
+	"opencode2api/internal/warp"
 )
 
 // Config is the service configuration stored in config.json.
@@ -31,6 +32,7 @@ type Config struct {
 	ZenKeys           []string                     `json:"zen_keys"`
 	GoKeys            []string                     `json:"go_keys"`
 	Anonymous         bool                         `json:"anonymous"`
+	Warp              WarpConfig                   `json:"warp"`
 	Proxies           []string                     `json:"proxies"`
 	ProxyFile         string                       `json:"proxyfile"`
 	Upstream          UpstreamConfig               `json:"upstream"`
@@ -60,6 +62,38 @@ type ReasoningConfig struct {
 	// never set, matching how the rest of the optional surface is persisted.
 	Effort        string            `json:"effort,omitempty"`
 	EffortByModel map[string]string `json:"effort_by_model,omitempty"`
+}
+
+// WarpConfig controls the optional Cloudflare WARP egress. While enabled,
+// free-model traffic on the anonymous lane and the free Zen-key fallback is
+// sent through a userspace WireGuard tunnel instead of any configured proxy.
+// PoolSize is the number of registered WARP exits kept warm (the last one is
+// held as hot standby); Stack selects the tunnel's address family. Initialization
+// is fail-closed: a configuration that enables WARP is rejected when no exit
+// can be established.
+type WarpConfig struct {
+	Enabled  bool   `json:"enabled"`
+	PoolSize int    `json:"pool_size,omitempty"`
+	Stack    string `json:"stack,omitempty"`
+}
+
+// Normalize fills the defaults and canonicalizes the stack name.
+func (w *WarpConfig) Normalize() error {
+	if w.PoolSize == 0 {
+		w.PoolSize = 2
+	}
+	if strings.TrimSpace(w.Stack) == "" {
+		w.Stack = string(warp.DefaultStack)
+	}
+	stack, err := warp.ParseStack(w.Stack)
+	if err != nil {
+		return fmt.Errorf("warp.stack: %w", err)
+	}
+	w.Stack = string(stack)
+	if w.PoolSize < 1 || w.PoolSize > 8 {
+		return errors.New("warp.pool_size must be between 1 and 8")
+	}
+	return nil
 }
 
 // UpstreamConfig holds the base URLs of the OpenCode origins. The gateway
@@ -237,6 +271,7 @@ func Load(path string) (Config, error) {
 	}
 	cfg := Config{
 		Listen:      "127.0.0.1:8080",
+		Warp:        WarpConfig{PoolSize: 2, Stack: string(warp.DefaultStack)},
 		Upstream:    UpstreamConfig{Zen: "https://opencode.ai/zen", Go: "https://opencode.ai/zen/go", Anonymous: "https://opencode.ai/inference"},
 		Retry:       RetryConfig{MaxAttempts: 3, TimeoutSeconds: 300},
 		Models:      ModelsConfig{RefreshSeconds: 300, Protocols: map[string]string{}},
@@ -262,6 +297,9 @@ func Load(path string) (Config, error) {
 func Normalize(path string, cfg Config) (Config, error) {
 	cfg.Rotation.Defaults()
 	if err := cfg.Rotation.Validate(nil); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Warp.Normalize(); err != nil {
 		return Config{}, err
 	}
 	trimList(&cfg.ServerKeys)

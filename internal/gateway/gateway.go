@@ -33,6 +33,7 @@ import (
 	wire "opencode2api/internal/protocol"
 	"opencode2api/internal/rotation"
 	"opencode2api/internal/telemetry"
+	"opencode2api/internal/warp"
 )
 
 const maxRequestBody = 32 << 20
@@ -69,13 +70,17 @@ const proxyUnavailableMessage = "all proxies are unavailable; the upstream could
 // config; applying a new config builds a new Gateway (see RuntimeController)
 // instead of mutating this one.
 type Gateway struct {
-	rotation     *rotation.Manager
-	cfg          config.Config
-	logger       *slog.Logger
-	transports   *proxyTransports
-	zenNodes     *upstreamNodes
-	goNodes      *upstreamNodes
-	anonymous    *anonymousNodes
+	rotation   *rotation.Manager
+	cfg        config.Config
+	logger     *slog.Logger
+	transports *proxyTransports
+	zenNodes   *upstreamNodes
+	goNodes    *upstreamNodes
+	anonymous  *anonymousNodes
+	// warp, when non-nil, is the shared userspace WARP pool. Free-model
+	// traffic on the anonymous lane and the Zen key tier leaves through it
+	// instead of the configured proxies and transports.
+	warp         *warp.Pool
 	catalog      *models.ModelCatalog
 	monitor      *telemetry.Metrics
 	availability *models.AvailabilityRegistry
@@ -94,7 +99,7 @@ type Gateway struct {
 // bound to those transports, the anonymous node pool and a model catalog. Its
 // rotation manager is not persisted; RuntimeController replaces it with the
 // shared one.
-func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Metrics) (*Gateway, error) {
+func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Metrics, warpPool *warp.Pool) (*Gateway, error) {
 	cfg.Rotation.Defaults()
 	rotationManager, err := rotation.New("", cfg.Rotation)
 	if err != nil {
@@ -124,6 +129,7 @@ func New(cfg config.Config, logger *slog.Logger, monitor *telemetry.Metrics) (*G
 		zenNodes:       zenNodes,
 		goNodes:        goNodes,
 		anonymous:      anonymousPool(cfg.Anonymous, transports, cooldown, anonymousBackoffFromConfig(cfg.Models.AnonymousBackoff)),
+		warp:           warpPool,
 		catalog:        catalog,
 		monitor:        monitor,
 		attemptTimeout: attemptDeadline(cfg),
@@ -337,6 +343,10 @@ func (g *Gateway) handleInference(external wire.Protocol) http.HandlerFunc {
 				wire.WriteError(w, external, http.StatusServiceUnavailable, proxyUnavailableMessage, "proxy_error", ids.Request)
 				return
 			}
+			if errors.Is(err, errWARPUnavailable) {
+				wire.WriteError(w, external, http.StatusServiceUnavailable, warpUnavailableMessage, "warp_unavailable", ids.Request)
+				return
+			}
 			// An exhausted request budget is a timeout, not a bad gateway: the
 			// distinction matters to clients that retry on 502.
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -526,6 +536,10 @@ func (g *Gateway) forwardSystemOne(w http.ResponseWriter, r *http.Request, body 
 		g.logger.Warn("all upstream attempts failed", "component", "upstream", "event", "request_failed", "request_id", ids.Request, "tier", finalTier, "key_id", keyID, "channel", channel, "anonymous", anonymous, "error", err)
 		if errors.Is(err, errProxyUnavailable) {
 			wire.WriteError(w, wire.SystemOne, http.StatusServiceUnavailable, proxyUnavailableMessage, "proxy_error", ids.Request)
+			return
+		}
+		if errors.Is(err, errWARPUnavailable) {
+			wire.WriteError(w, wire.SystemOne, http.StatusServiceUnavailable, warpUnavailableMessage, "warp_unavailable", ids.Request)
 			return
 		}
 		if errors.Is(err, context.DeadlineExceeded) {

@@ -4,6 +4,11 @@
   "zen_keys": [],
   "go_keys": [],
   "anonymous": true,
+  "warp": {
+    "enabled": false,
+    "pool_size": 2,
+    "stack": "ipv4"
+  },
   "proxies": ["direct"],
   "proxyfile": "",
   "upstream": {

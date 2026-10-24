@@ -861,6 +861,36 @@
                     </div>
                   </div>
                 </section>
+                <section class="section">
+                  <div class="section-head">
+                    <div>
+                      <h2 class="section-title" data-i18n="config.warp.title">WARP 出口</h2>
+                      <p class="section-caption" data-i18n="config.warp.caption">
+                        开启后，免费模型流量（匿名通道、免费模型 Zen Key、免费模型探测）改走用户态 WARP，不再使用任何 Proxy；Go 套餐与付费模型保持不变。
+                      </p>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="field full">
+                      <label class="check">
+                        <input id="c-warp-enabled" type="checkbox" />
+                        <span data-i18n="config.warp.enabled">免费模型流量通过 WARP 出口</span>
+                      </label>
+                    </div>
+                    <div class="field">
+                      <label for="c-warp-pool" data-i18n="config.warp.pool">WARP 出口数量</label>
+                      <input id="c-warp-pool" type="number" min="1" max="8" step="1" />
+                    </div>
+                    <div class="field">
+                      <label for="c-warp-stack" data-i18n="config.warp.stack">网络栈</label>
+                      <select id="c-warp-stack">
+                        <option value="ipv4">IPv4</option>
+                        <option value="ipv6">IPv6</option>
+                        <option value="dual" data-i18n="config.warp.stack.dual">双栈</option>
+                      </select>
+                    </div>
+                  </div>
+                </section>
               </div>
 
               <div data-panel="upstream" class="stack hidden" role="tabpanel">

@@ -27,6 +27,14 @@
 - 元数据以 `server_key_metadata` 保存在原配置中，按 Key 指纹关联；已有 `server_keys` 自动兼容。
 - 当前未实现按 Key 单独分配模型权限、用量配额或过期时间。
 
+## WARP 免费模型出口
+
+WebUI「Proxy 节点」页底部新增 WARP 开关，对应配置 `warp.enabled`（默认关闭）、`warp.pool_size`（1–8，默认 2）和 `warp.stack`（`ipv4`、`ipv6` 或 `dual`）。开启后，匿名通道、免费模型的 Zen Key 回退、免费模型可用性探测和匿名模型目录刷新都通过用户态 Cloudflare WARP 出网，不再使用任何代理；Go 套餐 Key 与付费模型保持原有代理绑定。
+
+- 主机或容器必须能向 Cloudflare 端点发送 UDP（端口 `2408`）；不需要 TUN 设备、root、`NET_ADMIN` 或修改路由表。
+- WARP 无法初始化时启动直接失败；通过 WebUI 启用时参数错误会返回错误，旧运行时继续服务，不会静默回退到代理。
+- `/healthz` 的 `warp` 块与 `/api/monitor` 的 `resources.warp` 显示堆栈、出口数量、活跃/备用/冷却数量和出口地址；启用 WARP 但无活跃出口时健康检查返回 503，此时若没有 Go Key，`no_healthy_proxies` 不再阻塞就绪。
+
 ## 验证和构建
 
 ```bash

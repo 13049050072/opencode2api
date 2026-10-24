@@ -12,6 +12,7 @@ L'eseguibile include la WebUI: per eseguire il servizio non servono Node.js né 
 - Testo, immagini, ragionamento, function tool, tool call e tool result; contenuti di file quando il protocollo di destinazione li supporta.
 - Pool separati di chiavi Zen e Go, preferenza del tier configurabile, retry e affinità di sessione.
 - Accesso anonimo opzionale a Zen con la credenziale `public` di OpenCode.
+- Uscita Cloudflare WARP in userspace per il traffico dei modelli gratuiti, senza TUN né root.
 - Connessioni dirette e tramite HTTP, HTTPS, SOCKS5 e SOCKS5H, anche da un file proxy.
 - Rilevamento dinamico dei modelli, metadati del protocollo nativo e cache su disco.
 - Porta di gestione separata con modifica della configurazione, Playground, diagnostica, statistiche dei token e log in tempo reale.
@@ -76,6 +77,8 @@ docker compose restart
 ```
 
 Il container esegue il servizio con un utente non privilegiato. Compose usa un filesystem root in sola lettura, un volume di stato scrivibile e un filesystem temporaneo `/tmp`.
+
+WARP richiede solo UDP in uscita (endpoint Cloudflare, porta `2408`), quindi la configurazione dell'immagine senza privilegi e senza `NET_ADMIN` funziona così com'è; non serve passare a host networking né aggiungere `--cap-add`. Se la rete del container blocca UDP, l'abilitazione di WARP fallisce all'avvio.
 
 | Variabile Compose           | Predefinito | Effetto                                                    |
 | --------------------------- | ----------- | ---------------------------------------------------------- |
@@ -223,9 +226,17 @@ Quando è configurato solo l'accesso anonimo, `/v1/models` espone esclusivamente
 
 I modelli gratuiti non richiedono una chiave Zen: con `anonymous: true` usano il canale pubblico e un'eventuale chiave configurata serve solo come fallback. Per conservare le chiavi ma esporre solo modelli gratuiti, imposta `models.free_only: true`. I modelli a pagamento scompaiono da `/v1/models`, le richieste dirette vengono rifiutate e gli alias di rotazione mantengono solo i membri gratuiti; questi ultimi possono comunque usare le chiavi configurate come fallback.
 
+### Uscita WARP per i modelli gratuiti
+
+`warp.enabled` sposta ogni richiesta di un modello gratuito sul canale gratuito — canale anonimo, fallback dei modelli gratuiti tramite chiave Zen, probe di disponibilità e aggiornamento anonimo del catalogo — su un tunnel Cloudflare WARP in userspace. Queste richieste non usano alcun proxy, quindi l'upstream vede l'indirizzo di uscita WARP invece del nodo configurato. Le chiavi del piano Go e i modelli a pagamento mantengono i loro proxy.
+
+Il tunnel vive nel processo del gateway: registra un dispositivo WARP, parla WireGuard su UDP con Cloudflare e termina in uno stack di rete in userspace. Non richiede dispositivi TUN, root, `NET_ADMIN` né modifiche alla tabella di routing, ma l'host o il container deve poter inviare UDP verso l'endpoint di Cloudflare (porta `2408`). Registrazione e probe del trace `warp=on` avvengono all'avvio; se WARP non riesce a inizializzarsi, l'avvio fallisce invece di ripiegare silenziosamente sui proxy. Anche l'abilitazione dalla WebUI è fail-closed: un valore errato restituisce un errore e il runtime precedente continua a servire.
+
+`warp.pool_size` (1–8, predefinito `2`) mantiene attive altrettante uscite e sostituisce automaticamente un'uscita bloccata o guasta; `warp.stack` seleziona `ipv4` (predefinito), `ipv6` o `dual`. `/healthz` restituisce un blocco `warp` e risponde 503 quando WARP è attivo ma nessuna uscita è operativa; `no_healthy_proxies` blocca la readiness solo con WARP disattivato o quando servono proxy per le chiavi Go. Le richieste diagnostiche acquisiscono un'uscita ma non la ruotano né la penalizzano. Disattivando WARP, i canali gratuiti tornano a usare i proxy.
+
 ### Disponibilità dei modelli gratuiti
 
-Il gateway verifica con una breve richiesta e il protocollo nativo i modelli il cui ID contiene `free` (senza distinzione tra maiuscole e minuscole) oppure i cui metadati indicano un costo input/output pari a zero e che non sono deprecati. Prova prima il canale anonimo abilitato, poi una chiave Zen configurata. Una risposta valida e completa su uno dei canali mantiene il modello abilitato. Il modello viene disabilitato nel rilevamento e nell'instradamento solo quando tutti i canali provati indicano esplicitamente che non esiste o è stato ritirato. Errori di autenticazione, limiti di frequenza, timeout, errori di trasporto, risposte 5xx e risposte malformate non sono conclusivi: non disabilitano nuovi modelli e vengono verificati di nuovo dopo un'ora. I controlli non alterano cooldown, stato dei proxy o statistiche delle richieste di produzione, ma raggiungono comunque l'upstream e possono consumare la quota gratuita.
+Il gateway verifica con una breve richiesta e il protocollo nativo i modelli il cui ID contiene `free` (senza distinzione tra maiuscole e minuscole) oppure i cui metadati indicano un costo input/output pari a zero e che non sono deprecati. Prova prima il canale anonimo abilitato, poi una chiave Zen configurata. Con `warp.enabled`, ogni canale di probe esce tramite WARP invece che da un proxy; se non è possibile acquisire un'uscita il risultato è `warp_unavailable` e resta inconcludente. Una risposta valida e completa su uno dei canali mantiene il modello abilitato. Il modello viene disabilitato nel rilevamento e nell'instradamento solo quando tutti i canali provati indicano esplicitamente che non esiste o è stato ritirato. Errori di autenticazione, limiti di frequenza, timeout, errori di trasporto, risposte 5xx e risposte malformate non sono conclusivi: non disabilitano nuovi modelli e vengono verificati di nuovo dopo un'ora. I controlli non alterano cooldown, stato dei proxy o statistiche delle richieste di produzione, ma raggiungono comunque l'upstream e possono consumare la quota gratuita.
 
 I modelli System One usano una domanda nativa `noul` che chiede se 1 + 1 è uguale a 2; non ricevono mai payload chat/tool. Il rilevamento dei modelli include `native_protocol` e `supported_endpoints`; gli alias di rotazione sono elencati solo quando esistono chiavi Go e modelli idonei. Le disabilitazioni legacy della versione v1.3.6 vengono cancellate al caricamento e verificate subito, perché quei controlli usavano ID sessione non validi.
 
@@ -259,6 +270,9 @@ Consulta [config.example.json](config.example.json) per una configurazione inizi
 | `server_keys`               | È richiesta almeno una chiave locale.                                        |
 | `zen_keys`, `go_keys`       | È richiesta una chiave upstream, salvo accesso anonimo abilitato.            |
 | `anonymous`                 | `false`.                                                                      |
+| `warp.enabled`              | `false`; il traffico dei canali gratuiti esce via Cloudflare WARP, senza proxy. |
+| `warp.pool_size`            | `2`; uscite WARP attive, 1–8.                                                 |
+| `warp.stack`                | `ipv4`; `ipv4`, `ipv6` o `dual`.                                              |
 | `prefer`                    | `go`; accetta `go` o `zen`.                                                   |
 | `upstream.zen`              | `https://opencode.ai/inference/openai`.                                       |
 | `upstream.go`               | `https://opencode.ai/zen/go`.                                                 |

@@ -358,6 +358,9 @@ func (g *Gateway) maxAnonymousExits() int {
 // control to the preferred authenticated tiers. It returns the last response
 // (body still open), else the last error, plus the number of attempts made.
 func (g *Gateway) doAnonymousUpstream(ctx context.Context, route models.Route, bodies map[config.Tier][]byte, ids identity.RequestIDs, attemptOffset int) (*http.Response, error, int) {
+	if g.usesWARP(route.ID, config.TierZen, true) {
+		return g.doWarpAnonymousUpstream(ctx, route, bodies, ids, attemptOffset)
+	}
 	// The breaker holds the lane shut for an hour-scale window after repeated
 	// failures: poking a flagged upstream again would only extend the block.
 	if !g.anonymous.AllowAttempt() {
@@ -1200,28 +1203,48 @@ func (g *Gateway) doSelectedKeyUpstream(ctx context.Context, route models.Route,
 		body = shaped
 	}
 	setRequestShape(ctx, changed, alias)
+	useWARP := g.usesWARP(route.ID, override.Tier, false)
 	proxy := nodes.Proxy(node)
-	if proxy == nil {
-		return nil, errors.New("selected upstream key has no proxy binding"), 0
+	if !useWARP {
+		if proxy == nil {
+			return nil, errors.New("selected upstream key has no proxy binding"), 0
+		}
 	}
 	if meta := telemetry.MetaFromContext(ctx); meta != nil {
 		meta.Attempts = attemptOffset + 1
 		meta.Tier = string(override.Tier)
 	}
 	keyID := config.KeyDisplayID(node.key)
-	setRequestCredential(ctx, override.Tier, keyID, "key", false, proxy)
+	if useWARP {
+		setRequestCredential(ctx, override.Tier, keyID, "key", false, nil)
+	} else {
+		setRequestCredential(ctx, override.Tier, keyID, "key", false, proxy)
+	}
 	req, err := upstreamRequest(ctx, baseURL, route.ProtocolFor(override.Tier), body, ids, node.key)
 	if err != nil {
 		return nil, err, 0
 	}
-	if proxy.pool {
+	if !useWARP && proxy.pool {
 		req.Close = true
 	}
 	started := time.Now()
-	resp, err := doInferenceAttempt(g.inferenceClient(proxy, baseURL, route.ID), req, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second, g.attemptTimeout)
+	var resp *http.Response
+	var egress string
+	if useWARP {
+		resp, egress, err = g.doWARPAttempt(ctx, req, baseURL, route.ID, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second)
+	} else {
+		resp, err = doInferenceAttempt(g.inferenceClient(proxy, baseURL, route.ID), req, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second, g.attemptTimeout)
+	}
 	duration := time.Since(started)
-	g.recordUpstreamAttempt(ctx, route, ids, attemptOffset+1, keyID, "key", false, proxy, resp, err, duration)
+	recordProxy := proxy
+	if useWARP {
+		recordProxy = warpProxy(egress)
+	}
+	g.recordUpstreamAttempt(ctx, route, ids, attemptOffset+1, keyID, "key", false, recordProxy, resp, err, duration)
 	if err != nil {
+		if useWARP {
+			return nil, err, 1
+		}
 		return nil, asProxyUnavailable(proxy, err), 1
 	}
 	return resp, nil, 1
@@ -1261,6 +1284,7 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 		body = shaped
 	}
 	setRequestShape(ctx, changed, alias)
+	useWARP := g.usesWARP(route.ID, route.Tier, false)
 	for attempts < g.cfg.Retry.MaxAttempts {
 		if ctx.Err() != nil {
 			// Same guard as the anonymous loop: an exhausted request budget
@@ -1290,17 +1314,29 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 			return nil, err, attempts
 		}
 		proxy := nodes.Proxy(node)
-		if proxy == nil {
-			lastErr = errors.New("upstream key has no proxy binding")
-			break
-		}
-		if proxy.pool {
-			req.Close = true
+		if !useWARP {
+			if proxy == nil {
+				lastErr = errors.New("upstream key has no proxy binding")
+				break
+			}
+			if proxy.pool {
+				req.Close = true
+			}
 		}
 		keyID := config.KeyDisplayID(node.key)
-		setRequestCredential(ctx, route.Tier, keyID, "key", false, proxy)
+		if useWARP {
+			setRequestCredential(ctx, route.Tier, keyID, "key", false, nil)
+		} else {
+			setRequestCredential(ctx, route.Tier, keyID, "key", false, proxy)
+		}
 		attemptStarted := time.Now()
-		resp, err := doInferenceAttempt(g.inferenceClient(proxy, baseURL, route.ID), req, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second, g.attemptTimeout)
+		var resp *http.Response
+		var egress string
+		if useWARP {
+			resp, egress, err = g.doWARPAttempt(ctx, req, baseURL, route.ID, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second)
+		} else {
+			resp, err = doInferenceAttempt(g.inferenceClient(proxy, baseURL, route.ID), req, time.Duration(g.cfg.Performance.FirstEventTimeoutSeconds)*time.Second, g.attemptTimeout)
+		}
 		attemptDuration := time.Since(attemptStarted)
 		if ctx.Err() != nil {
 			// The request budget expired while this attempt was in flight. A
@@ -1313,10 +1349,19 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 			}
 			break
 		}
-		g.observeKeyResult(ctx, nodes, node, proxy, resp, err)
-		g.recordUpstreamAttempt(ctx, route, ids, attemptOffset+attempts, keyID, "key", false, proxy, resp, err, attemptDuration)
+		recordProxy := proxy
+		proxyLabel := ""
+		if useWARP {
+			recordProxy = warpProxy(egress)
+			proxyLabel = egress
+			g.observeKeyResultWARP(ctx, nodes, node, resp, err)
+		} else {
+			proxyLabel = config.RedactURL(proxy.name)
+			g.observeKeyResult(ctx, nodes, node, proxy, resp, err)
+		}
+		g.recordUpstreamAttempt(ctx, route, ids, attemptOffset+attempts, keyID, "key", false, recordProxy, resp, err, attemptDuration)
 		if err == nil && resp.StatusCode/100 == 2 {
-			g.logger.Debug("upstream accepted request", "component", "upstream", "event", "attempt_succeeded", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "proxy", config.RedactURL(proxy.name), "status", resp.StatusCode, "duration_ms", attemptDuration.Milliseconds())
+			g.logger.Debug("upstream accepted request", "component", "upstream", "event", "attempt_succeeded", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "proxy", proxyLabel, "status", resp.StatusCode, "duration_ms", attemptDuration.Milliseconds())
 			return resp, nil, attempts
 		}
 		// Request-shape errors are deterministic and must leave this tier without
@@ -1324,15 +1369,24 @@ func (g *Gateway) doKeyUpstream(ctx context.Context, route models.Route, bodies 
 		// tier in prefer order. Authentication, throttling, server, and transport
 		// failures remain retryable inside this tier.
 		if isNonRetryableClientResponse(resp, err) {
-			g.logger.Debug("upstream rejected a non-retryable request", "component", "upstream", "event", "attempt_rejected", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "status", resp.StatusCode, "proxy", config.RedactURL(proxy.name), "duration_ms", attemptDuration.Milliseconds())
+			g.logger.Debug("upstream rejected a non-retryable request", "component", "upstream", "event", "attempt_rejected", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "status", resp.StatusCode, "proxy", proxyLabel, "duration_ms", attemptDuration.Milliseconds())
 			return resp, nil, attempts
 		}
 		lastResponse = resp
-		lastErr = asProxyUnavailable(proxy, err)
-		if err != nil {
-			g.logger.Debug("upstream transport attempt failed", "component", "upstream", "event", "attempt_transport_failed", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "proxy", config.RedactURL(proxy.name), "duration_ms", attemptDuration.Milliseconds(), "error", err)
+		if useWARP && errors.Is(err, errWARPUnavailable) {
+			// No exit at all: another key would only wait on the same pool.
+			lastErr = err
+			break
+		}
+		if useWARP {
+			lastErr = err
 		} else {
-			g.logger.Debug("upstream returned a retryable response", "component", "upstream", "event", "attempt_retryable_response", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "status", resp.StatusCode, "proxy", config.RedactURL(proxy.name), "duration_ms", attemptDuration.Milliseconds())
+			lastErr = asProxyUnavailable(proxy, err)
+		}
+		if err != nil {
+			g.logger.Debug("upstream transport attempt failed", "component", "upstream", "event", "attempt_transport_failed", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "proxy", proxyLabel, "duration_ms", attemptDuration.Milliseconds(), "error", err)
+		} else {
+			g.logger.Debug("upstream returned a retryable response", "component", "upstream", "event", "attempt_retryable_response", "request_id", ids.Request, "attempt", attempts, "tier", route.Tier, "key_id", keyID, "status", resp.StatusCode, "proxy", proxyLabel, "duration_ms", attemptDuration.Milliseconds())
 		}
 	}
 	if lastResponse != nil {

@@ -240,6 +240,12 @@ Mô hình miễn phí không bao giờ cần key Zen: với `anonymous: true` ch
 
 `warp.pool_size` (1–8, mặc định `2`) giữ số đầu ra đó ở trạng thái hoạt động và tự thay thế đầu ra bị chặn hoặc hỏng; `warp.stack` chọn `ipv4` (mặc định), `ipv6` hoặc `dual`. `/healthz` trả về khối `warp` và 503 khi WARP bật nhưng không có đầu ra nào hoạt động; `no_healthy_proxies` chỉ chặn readiness khi WARP tắt hoặc có key Go cần proxy. Request chẩn đoán có lấy đầu ra nhưng không bao giờ luân chuyển hay phạt nó. Tắt WARP sẽ khôi phục định tuyến qua proxy cho các làn miễn phí.
 
+### System prompt chính thức
+
+Mỗi request mô hình miễn phí đã được định hình đều mang system prompt của chính OpenCode CLI — hướng dẫn gốc, khối `<env>` và danh sách skill tích hợp — vì làn miễn phí kiểm tra request có dạng agent. Làn v1 `/zen` dùng tên công cụ 1.x; `/inference` và `/zen/go` dùng tên 2.x. Khối môi trường nêu mô hình được yêu cầu, thư mục làm việc của gateway, nền tảng và ngày theo UTC.
+
+Việc chèn phụ thuộc giao thức: các message system và developer của Chat được gộp thành một message `system` duy nhất ở đầu; Anthropic nhận giá trị `system` (chuỗi, hoặc một text block ở đầu khi bên gọi gửi danh sách block); Responses nhận `instructions`. Nếu nội dung system đã chứa dấu hiệu `You are opencode, an interactive CLI tool`, request được giữ nguyên, nên client đã gửi prompt chính thức sẽ không bị chèn lần hai. Mô hình miễn phí phục vụ qua Zen hoặc Go Key cũng được định hình như vậy nhưng vẫn ra ngoài qua proxy của tier đó.
+
 ### Tính khả dụng của mô hình miễn phí
 
 Gateway dò các mô hình có ID chứa `free` (không phân biệt hoa thường), hoặc có metadata báo chi phí input/output bằng 0 mà không bị ngừng cấp, bằng một request ngắn dùng giao thức gốc của mô hình. Nó thử làn ẩn danh đang bật trước, rồi tới một Zen Key đã cấu hình. Khi bật `warp.enabled`, mọi làn dò đi qua WARP thay vì proxy; nếu không lấy được đầu ra, kết quả là `warp_unavailable` và được coi là không kết luận. Một phản hồi hợp lệ và hoàn tất trên bất kỳ làn nào sẽ giữ mô hình ở trạng thái bật; mô hình chỉ bị tắt trong phát hiện và định tuyến khi mọi làn được thử đều báo rõ ràng rằng mô hình không tồn tại hoặc đã bị thu hồi. Lỗi xác thực, giới hạn tần suất, timeout, lỗi truyền tải, phản hồi 5xx và câu trả lời sai định dạng đều không kết luận: chúng không tạo ra lần tắt mới và sẽ được kiểm tra lại sau một giờ. Lưu lượng dò không làm thay đổi cooldown key/proxy sản xuất hay thống kê request. Nó vẫn đi tới upstream và có thể tiêu tốn hạn mức miễn phí của họ.

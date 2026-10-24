@@ -673,6 +673,9 @@ func prepareAnonymousBody(body []byte, protocol wire.Protocol, v1 bool) ([]byte,
 	if ensureAnonymousChatUsage(payload, protocol) {
 		changed = true
 	}
+	if injectOfficialPrompt(payload, protocol, v1) {
+		changed = true
+	}
 	var alias string
 	if v1 {
 		var toolChanged bool
